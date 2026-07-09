@@ -92,22 +92,10 @@
   .leaflet-popup-content h3{margin:0 0 .2rem;font-size:.92rem}
   .leaflet-popup-content a{color:var(--acento)}
   .divider{height:1px;background:var(--linea);margin:.7rem 0}
-  /* Panel móvil: deslizable desde abajo */
-  #panelDragHandle{display:none;height:28px;background:#fff;border-top:3px solid var(--gris);border-radius:20px 20px 0 0;cursor:grab;text-align:center;padding:.3rem 0;position:sticky;top:0;z-index:10}
-  #panelDragHandle::before{content:'─';font-size:1.2rem;color:var(--gris);font-weight:700}
-  #panelDragHandle:active{cursor:grabbing}
   @media (max-width:820px){
-    main{flex-direction:column;position:relative}
-    #map{height:60vh;min-height:240px;flex:none}
-    #panel{position:fixed;bottom:0;left:0;right:0;width:100%;max-width:100%;border-left:none;border-top:1px solid var(--linea);border-radius:20px 20px 0 0;max-height:50vh;height:auto;background:#fff;box-shadow:0 -4px 12px rgba(0,0,0,.15);z-index:100;transform:translateY(100%);transition:transform .3s ease;overflow:hidden;display:flex;flex-direction:column}
-    #panel.visible{transform:translateY(0)}
-    #panelDragHandle{display:block}
-    .tabs{border-radius:0}
-    .tabc{max-height:calc(50vh - 120px);overflow-y:auto}
-  }
-  @media (max-width:820px) and (orientation:landscape){
-    #panel{max-height:70vh}
-    .tabc{max-height:calc(70vh - 120px)}
+    main{flex-direction:column}
+    #map{height:50vh;min-height:240px;flex:none}
+    #panel{width:100%;max-width:100%;border-left:none;border-top:1px solid var(--linea);flex:1;max-height:50vh;overflow-y:auto}
   }
   /* ===== Portada "Viajes del Sunny" ===== */
   #cover{position:fixed;inset:0;z-index:5000;background:#5b7cf0 url('sunny.png') center bottom/contain no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:6vh 1rem 0;text-align:center;transition:opacity .5s ease}
@@ -167,7 +155,6 @@
   <main>
     <div id="map"></div>
     <aside id="panel">
-      <div id="panelDragHandle" ontouchstart="panelTouchStart(event)" ontouchmove="panelTouchMove(event)" ontouchend="panelTouchEnd(event)"></div>
       <div class="tabs">
         <div class="tab on" data-tab="ruta">🗺️ Ruta</div>
         <div class="tab" data-tab="traffic">🚨 Tráfico</div>
@@ -653,9 +640,7 @@ async function drawRoute(){
     const j=await r.json();
     if(j.routes&&j.routes[0]){
       const g=j.routes[0].geometry;
-      routeLayer=L.geoJSON(g,{style:{color:'#c8362f',weight:4,opacity:.9,dashArray:null},onEachFeature:(f,l)=>{
-        l.on('click',()=>{});
-      }}).addTo(map);
+      routeLayer=L.geoJSON(g,{style:{color:'#c8362f',weight:4,opacity:.9,dashArray:null}}).addTo(map);
       totalKm=j.routes[0].distance/1000;
       routeLayers.push(routeLayer);
     }
@@ -666,29 +651,6 @@ async function drawRoute(){
     routeLayer=L.polyline(line,{color:'#c8362f',weight:3,opacity:.6,dashArray:'6 6'}).addTo(map);
     totalKm=haversineTotal(land);
     routeLayers.push(routeLayer);
-  }
-
-  // Dibujar rutas alternativas entre segmentos (semi-transparentes)
-  for(let i=0;i<land.length-1;i++){
-    const leg=`${i}-${i+1}`;
-    try{
-      const s1=land[i],s2=land[i+1];
-      const url=`https://router.project-osrm.org/route/v1/driving/${s1.lng},${s1.lat};${s2.lng},${s2.lat}?alternatives=true&overview=full&geometries=geojson`;
-      const r=await fetch(url);const j=await r.json();
-      if(j.routes&&j.routes.length>1){
-        routesByLeg[leg]=j.routes;
-        j.routes.slice(1).forEach((route,idx)=>{
-          const color=routeColors[idx%routeColors.length];
-          const altLayer=L.geoJSON(route.geometry,{
-            style:{color,weight:2.5,opacity:.35,dashArray:'4 4'},
-            onEachFeature:(f,l)=>{
-              l.on('click',()=>switchRouteLeg(leg,idx+1,s1,s2,route));
-            }
-          }).addTo(map);
-          routeLayers.push(altLayer);
-        });
-      }
-    }catch(e){}
   }
 
   // Ferry line
@@ -702,14 +664,6 @@ async function drawRoute(){
   }
 
   updateSummary(totalKm);
-}
-
-function switchRouteLeg(leg,routeIdx,stop1,stop2,route){
-  const [i,j]=leg.split('-').map(Number);
-  const km=(route.distance/1000).toFixed(0);
-  if(!confirm(`¿Cambiar ruta de ${stop1.name} a ${stop2.name}?\n${km} km`))return;
-  state.stops[i].routeIndex=routeIdx;
-  save();drawRoute();
 }
 function haversineTotal(arr){let t=0;for(let i=0;i<arr.length-1;i++){t+=hav(arr[i],arr[i+1]);}return t;}
 function hav(a,b){const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180;const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
@@ -821,7 +775,6 @@ window.delStop=id=>{if(!confirm('¿Eliminar esta parada?'))return;state.stops=st
 
 let editing=null,insertPos=null,touchStartY=0;
 let routeAlternatives=[];let selectedRouteIdx=0;
-let panelTouchStart=0;
 
 /* Modal deslizable: gestos touch para cerrar */
 function handleTouchMove(e){
@@ -836,25 +789,6 @@ function handleTouchEnd(e){
   if(diff>120)closeModal();
   else document.getElementById('modalSheet').style.transform='translateY(0)';
 }
-
-/* Panel móvil: gestos touch para subir/bajar */
-window.panelTouchStart=e=>{panelTouchStart=e.touches[0].clientY;};
-window.panelTouchMove=e=>{
-  if(!window.innerWidth||window.innerWidth>820)return;
-  const panel=document.getElementById('panel');
-  const current=e.touches[0].clientY;
-  const diff=panelTouchStart-current;
-  if(Math.abs(diff)>5)panel.style.transition='none';
-};
-window.panelTouchEnd=e=>{
-  if(!window.innerWidth||window.innerWidth>820)return;
-  const panel=document.getElementById('panel');
-  const current=e.changedTouches[0].clientY;
-  const diff=panelTouchStart-current;
-  panel.style.transition='transform .3s ease';
-  if(diff>40)panel.classList.add('visible');
-  else if(diff<-40)panel.classList.remove('visible');
-};
 function closeModal(){
   insertPos=null;
   document.getElementById('modal').classList.remove('show');
@@ -989,10 +923,20 @@ function renderRouteAlternatives(fromName,toName,routes){
   routes.forEach((route,i)=>{
     const km=(route.distance/1000).toFixed(0);
     const min=Math.round(route.duration/60);
-    const el=document.createElement('div');
-    el.className='route-option'+(i===0?' active':'');
-    el.innerHTML=`<div><div style="font-weight:600">${i===0?'📍 Ruta recomendada':i===1?'🔄 Alt 2':'🔄 Alt '+i}</div><div class="route-info">${km} km · ${min} min</div></div><input type="radio" name="route" value="${i}" ${i===0?'checked':''}>`;
-    el.querySelector('input').onchange=()=>{selectedRouteIdx=i;document.querySelectorAll('.route-option').forEach(x=>x.classList.remove('active'));el.classList.add('active');};
+    const el=document.createElement('button');
+    el.className='route-option'+(i===0?' active':'')+' btn';
+    el.style.width='100%';
+    el.style.padding='.6rem';
+    el.style.marginBottom='.4rem';
+    el.style.justifyContent='space-between';
+    el.innerHTML=`<div style="text-align:left"><div style="font-weight:600">${i===0?'📍 Ruta recomendada':i===1?'🔄 Alternativa 2':'🔄 Alternativa '+i}</div><div class="route-info">${km} km · ${min} min</div></div>`;
+    el.onclick=(e)=>{
+      e.preventDefault();
+      selectedRouteIdx=i;
+      document.querySelectorAll('#routeOptions .route-option').forEach(x=>x.classList.remove('active'));
+      el.classList.add('active');
+      console.log('✓ Ruta '+i+' seleccionada: '+km+' km');
+    };
     cont.appendChild(el);
   });
 }
