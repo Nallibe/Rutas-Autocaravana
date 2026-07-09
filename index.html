@@ -15,7 +15,7 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--tinta);background:var(--fondo);-webkit-text-size-adjust:100%}
-  #app{display:flex;flex-direction:column;height:100%}
+  #app{display:flex;flex-direction:column;height:100%;height:calc(var(--vh,1vh) * 100)}
   header{background:linear-gradient(90deg,var(--verde),#fff 35% 65%,var(--rojo));padding:0;position:relative;box-shadow:var(--sombra);z-index:1000}
   .hbar{background:rgba(255,255,255,.92);backdrop-filter:blur(6px);display:flex;align-items:center;gap:.6rem;padding:.55rem .8rem;flex-wrap:wrap}
   .hbar h1{font-size:1rem;margin:0;font-weight:700;letter-spacing:-.2px;flex:1;min-width:180px}
@@ -26,14 +26,15 @@
   .btn.p:hover{filter:brightness(.94)}
   .btn.g{background:var(--verde);color:#fff;border-color:var(--verde)}
   .btn.d{background:#fff;color:var(--rojo);border-color:#f2c9c7}
-  main{flex:1;display:flex;min-height:0}
+  main{flex:1;display:flex;min-height:0;position:relative}
   #map{flex:1;min-height:280px;background:#dfe6e9}
-  #panel{width:420px;max-width:46%;background:var(--panel);border-left:1px solid var(--linea);overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column}
-  .tabs{display:flex;position:sticky;top:0;background:#fff;border-bottom:1px solid var(--linea);z-index:5}
+  #panel{width:420px;max-width:46%;background:var(--panel);border-left:1px solid var(--linea);display:flex;flex-direction:column;overflow:hidden}
+  #panelHandle,#panelToggle{display:none}
+  .tabs{display:flex;flex:0 0 auto;background:#fff;border-bottom:1px solid var(--linea);z-index:5}
   .tab{flex:1;text-align:center;padding:.6rem .3rem;font-size:.76rem;font-weight:700;color:var(--gris);cursor:pointer;border-bottom:2px solid transparent}
   .tab.on{color:var(--acento);border-bottom-color:var(--acento)}
   .tabc{padding:.7rem .8rem;display:none}
-  .tabc.on{display:block}
+  .tabc.on{display:block;flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .sum{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.7rem}
   .card{background:var(--fondo);border:1px solid var(--linea);border-radius:10px;padding:.55rem .65rem}
   .card b{display:block;font-size:1.15rem;line-height:1.1}
@@ -93,9 +94,13 @@
   .leaflet-popup-content a{color:var(--acento)}
   .divider{height:1px;background:var(--linea);margin:.7rem 0}
   @media (max-width:820px){
-    main{flex-direction:column}
-    #map{height:50vh;min-height:240px;flex:none}
-    #panel{width:100%;max-width:100%;border-left:none;border-top:1px solid var(--linea);flex:1;max-height:50vh;overflow-y:auto}
+    main{flex-direction:column;position:relative;overflow:hidden}
+    #map{position:absolute;inset:0;height:auto}
+    #panel{position:absolute;left:0;right:0;bottom:0;width:100%;max-width:100%;border-left:none;border-top:none;border-radius:18px 18px 0 0;box-shadow:0 -6px 20px rgba(0,0,0,.18);height:44vh;height:calc(var(--vh,1vh) * 44);max-height:88vh;min-height:160px;z-index:400;transition:height .28s ease}
+    #panel.expanded{height:88vh;height:calc(var(--vh,1vh) * 88)}
+    #panelHandle{display:flex;flex:0 0 auto;align-items:center;justify-content:center;padding:.4rem 0;cursor:grab;touch-action:none;position:relative;background:#fff;border-radius:18px 18px 0 0}
+    #panelHandle .bar{width:40px;height:5px;border-radius:3px;background:var(--linea)}
+    #panelToggle{display:flex;position:absolute;right:.5rem;top:.35rem;background:#fff;border:1px solid var(--linea);border-radius:50%;width:30px;height:30px;align-items:center;justify-content:center;font-size:1rem;cursor:pointer;box-shadow:var(--sombra)}
   }
   /* ===== Portada "Viajes del Sunny" ===== */
   #cover{position:fixed;inset:0;z-index:5000;background:#5b7cf0 url('sunny.png') center bottom/contain no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:6vh 1rem 0;text-align:center;transition:opacity .5s ease}
@@ -155,6 +160,10 @@
   <main>
     <div id="map"></div>
     <aside id="panel">
+      <div id="panelHandle" onmousedown="panelDragStart(event)" ontouchstart="panelDragStart(event)" ontouchmove="panelDragMove(event)" ontouchend="panelDragEnd(event)">
+        <div class="bar"></div>
+      </div>
+      <button id="panelToggle" type="button" onclick="togglePanelExpand()">⌃</button>
       <div class="tabs">
         <div class="tab on" data-tab="ruta">🗺️ Ruta</div>
         <div class="tab" data-tab="traffic">🚨 Tráfico</div>
@@ -254,20 +263,21 @@
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
 
-    <!-- Selector de rutas alternativas (nuevo) -->
+    <!-- Acciones de ruta: saltar/eliminar el tramo hasta la siguiente parada -->
     <div id="routeSection" style="display:none">
-      <div class="route-selector">
-        <div style="font-weight:700;margin-bottom:.6rem;font-size:.9rem">🛣️ Rutas disponibles</div>
-        <div id="routeOptions"></div>
-      </div>
       <div class="route-actions">
-        <button class="btn p" id="btnSkipStop">⏭️ Saltar a siguiente</button>
-        <button class="btn d" id="btnDeleteRoute">🗑️ Eliminar ruta</button>
+        <button class="btn p" type="button" id="btnSkipStop">⏭️ Saltar a siguiente</button>
+        <button class="btn d" type="button" id="btnDeleteRoute">🗑️ Eliminar ruta</button>
       </div>
+      <p class="muted">💡 Para elegir una <b>ruta alternativa</b> (otra carretera), cierra este editor y toca directamente sobre las líneas de colores del mapa.</p>
       <div class="divider"></div>
     </div>
     <div class="field"><label>Nombre de la parada</label><input id="mName"></div>
-    <button class="btn p" id="mGeo" style="width:100%;margin-bottom:.55rem">🔎 Buscar coordenadas por el nombre</button>
+    <div class="acts" style="margin-bottom:.55rem">
+      <button class="btn p" type="button" id="mGeo" style="flex:2">🔎 Buscar coordenadas</button>
+      <button class="btn" type="button" id="mAutoFill" style="flex:1">🔄 Autocompletar</button>
+    </div>
+    <div id="autoFillStatus" class="muted" style="display:none;margin:-.3rem 0 .55rem"></div>
     <div class="field"><label>Subtítulo / región</label><input id="mSub"></div>
     <div class="field row">
       <div style="flex:1"><label>Día(s)</label><input id="mDay"></div>
@@ -438,6 +448,10 @@ if(!app.trips[app.activeId])app.activeId=Object.keys(app.trips)[0];
 let state=app.trips[app.activeId];
 function save(){localStorage.setItem(KEY,JSON.stringify(app));}
 
+/* Fix del 100vh roto en móviles (barra de direcciones dinámica) */
+function setVH(){document.documentElement.style.setProperty('--vh',(window.innerHeight*0.01)+'px');}
+setVH();window.addEventListener('resize',setVH);window.addEventListener('orientationchange',()=>setTimeout(setVH,250));
+
 /* Geocodificación (OpenStreetMap Nominatim): convierte "Lisboa" -> lat/lng.
    Requiere internet. Detecta las coordenadas para cualquier país/lugar. */
 async function geocode(q){
@@ -591,6 +605,51 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
 let markers=[], routeLayer=null, routeLayers=[], activeRouteLeg=null;
 let routesByLeg={}; // Almacena rutas alternativas por segmento
 
+/* ============================ PANEL MÓVIL (bottom-sheet) ============================ */
+function isMobilePanel(){return window.innerWidth<=820;}
+window.togglePanelExpand=()=>{
+  if(!isMobilePanel())return;
+  const panel=document.getElementById('panel');
+  panel.style.height='';
+  panel.classList.toggle('expanded');
+  document.getElementById('panelToggle').textContent=panel.classList.contains('expanded')?'⌄':'⌃';
+  setTimeout(()=>map.invalidateSize(),300);
+};
+let panelDragging=false,panelDragStartY=0,panelStartH=0;
+window.panelDragStart=e=>{
+  if(!isMobilePanel())return;
+  panelDragging=true;
+  panelDragStartY=e.touches?e.touches[0].clientY:e.clientY;
+  const panel=document.getElementById('panel');
+  panelStartH=panel.getBoundingClientRect().height;
+  panel.style.transition='none';
+  if(!e.touches){
+    const mm=ev=>window.panelDragMove(ev);
+    const mu=ev=>{window.panelDragEnd(ev);window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);};
+    window.addEventListener('mousemove',mm);window.addEventListener('mouseup',mu);
+  }
+};
+window.panelDragMove=e=>{
+  if(!panelDragging)return;
+  const y=e.touches?e.touches[0].clientY:e.clientY;
+  const diff=panelDragStartY-y;
+  let h=panelStartH+diff;
+  const minH=window.innerHeight*0.18,maxH=window.innerHeight*0.88;
+  h=Math.max(minH,Math.min(maxH,h));
+  document.getElementById('panel').style.height=h+'px';
+};
+window.panelDragEnd=()=>{
+  if(!panelDragging)return;
+  panelDragging=false;
+  const panel=document.getElementById('panel');
+  panel.style.transition='height .28s ease';
+  const h=panel.getBoundingClientRect().height;
+  if(h>window.innerHeight*0.55){panel.classList.add('expanded');document.getElementById('panelToggle').textContent='⌄';}
+  else{panel.classList.remove('expanded');document.getElementById('panelToggle').textContent='⌃';}
+  panel.style.height='';
+  setTimeout(()=>map.invalidateSize(),300);
+};
+
 function colorFor(s){return s.type==='ferry'?'#0d6efd':s.optional?'#6b7280':'#c8362f';}
 
 /* Colores para rutas alternativas */
@@ -623,47 +682,73 @@ function drawMarkers(){
 }
 function visibleStops(){return state.stops.filter(s=>state.showOpt||!s.optional);}
 
+/* La ruta y el presupuesto SOLO se calculan con paradas NO opcionales (core).
+   Las opcionales se muestran (si el toggle lo permite) unidas por líneas grises que NO cuentan km/coste. */
+function coreStops(){return state.stops.filter(s=>!s.optional&&!/Ferry/.test(s.name));}
+
 async function drawRoute(){
-  // Limpiar rutas previas
   routeLayers.forEach(l=>map.removeLayer(l));
   routeLayers=[];routesByLeg={};
-  if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
 
-  const land=visibleStops().filter(s=>!/Ferry/.test(s.name));
-  if(land.length<2){updateSummary(0);return;}
+  const core=coreStops();
+  if(core.length<2){updateSummary(0);return;}
 
   let totalKm=0;
-  const coords=land.map(s=>`${s.lng},${s.lat}`).join(';');
+  state.routeChoices=state.routeChoices||{};
 
-  try{
-    const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`);
-    const j=await r.json();
-    if(j.routes&&j.routes[0]){
-      const g=j.routes[0].geometry;
-      routeLayer=L.geoJSON(g,{style:{color:'#c8362f',weight:4,opacity:.9,dashArray:null}}).addTo(map);
-      totalKm=j.routes[0].distance/1000;
-      routeLayers.push(routeLayer);
+  for(let i=0;i<core.length-1;i++){
+    const s1=core[i],s2=core[i+1];
+    const legKey=s1.id+'-'+s2.id;
+    let routes=await fetchRouteAlternatives(s1,s2);
+    if(!routes.length){
+      routes=[{geometry:{type:'LineString',coordinates:[[s1.lng,s1.lat],[s2.lng,s2.lat]]},distance:hav(s1,s2)*1000,duration:0}];
     }
-  }catch(e){}
+    routesByLeg[legKey]=routes;
+    let chosenIdx=state.routeChoices[legKey]||0;
+    if(chosenIdx>=routes.length)chosenIdx=0;
 
-  if(!routeLayer){
-    const line=land.map(s=>[s.lat,s.lng]);
-    routeLayer=L.polyline(line,{color:'#c8362f',weight:3,opacity:.6,dashArray:'6 6'}).addTo(map);
-    totalKm=haversineTotal(land);
-    routeLayers.push(routeLayer);
+    routes.forEach((route,idx)=>{
+      const isChosen=idx===chosenIdx;
+      const color=isChosen?'#c8362f':routeColors[(idx+1)%routeColors.length];
+      const style=isChosen?{color,weight:5,opacity:.9}:{color,weight:3,opacity:.5,dashArray:'6 6'};
+      const layer=L.geoJSON(route.geometry,{style}).addTo(map);
+      // Línea invisible más ancha para facilitar el toque en móvil
+      const hitLine=L.geoJSON(route.geometry,{style:{color:'#000',weight:22,opacity:0}}).addTo(map);
+      hitLine.on('click',()=>selectRouteForLeg(legKey,idx));
+      if(!isChosen)layer.on('click',()=>selectRouteForLeg(legKey,idx));
+      routeLayers.push(layer,hitLine);
+    });
+
+    totalKm+=routes[chosenIdx].distance/1000;
   }
 
-  // Ferry line
+  // Conectores GRISES para paradas opcionales (solo visual, no cuentan km/coste)
+  if(state.showOpt){
+    const all=state.stops;
+    all.forEach((s,i)=>{
+      if(!s.optional||/Ferry/.test(s.name))return;
+      const prev=all[i-1],next=all[i+1];
+      if(prev)routeLayers.push(L.polyline([[prev.lat,prev.lng],[s.lat,s.lng]],{color:'#9ca3af',weight:3,opacity:.65,dashArray:'3 7'}).addTo(map));
+      if(next)routeLayers.push(L.polyline([[s.lat,s.lng],[next.lat,next.lng]],{color:'#9ca3af',weight:3,opacity:.65,dashArray:'3 7'}).addTo(map));
+    });
+  }
+
+  // Ferry (línea azul discontinua) sobre la secuencia visible completa
   const ferryLeg=visibleStops();
   for(let i=0;i<ferryLeg.length-1;i++){
     if(/Ferry/.test(ferryLeg[i].name)||/Ferry/.test(ferryLeg[i+1].name)){
-      const ferryLine=L.polyline([[ferryLeg[i].lat,ferryLeg[i].lng],[ferryLeg[i+1].lat,ferryLeg[i+1].lng]],{color:'#0d6efd',weight:3,dashArray:'2 8',opacity:.8});
-      ferryLine.addTo(map);
-      routeLayers.push(ferryLine);
+      routeLayers.push(L.polyline([[ferryLeg[i].lat,ferryLeg[i].lng],[ferryLeg[i+1].lat,ferryLeg[i+1].lng]],{color:'#0d6efd',weight:3,dashArray:'2 8',opacity:.8}).addTo(map));
     }
   }
 
   updateSummary(totalKm);
+}
+
+function selectRouteForLeg(legKey,idx){
+  state.routeChoices=state.routeChoices||{};
+  state.routeChoices[legKey]=idx;
+  save();
+  drawRoute();
 }
 function haversineTotal(arr){let t=0;for(let i=0;i<arr.length-1;i++){t+=hav(arr[i],arr[i+1]);}return t;}
 function hav(a,b){const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180;const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
@@ -672,9 +757,10 @@ function hav(a,b){const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)
 let lastKm=null;
 function updateSummary(km){
   if(km!=null)lastKm=km;
-  const K=lastKm||haversineTotal(visibleStops().filter(s=>!/Ferry/.test(s.name)));
+  const core=coreStops();
+  const K=lastKm!=null?lastKm:haversineTotal(core);
   document.getElementById('sKm').textContent=Math.round(K).toLocaleString('es-ES')+' km';
-  const peajes=state.peajesOn?visibleStops().reduce((a,s)=>a+(+s.toll||0),0)+(+state.ferry||0):0;
+  const peajes=state.peajesOn?core.reduce((a,s)=>a+(+s.toll||0),0)+(+state.ferry||0):0;
   document.getElementById('sPeaje').textContent=state.peajesOn?peajes.toLocaleString('es-ES')+' €':'—';
   const fuel=K/100*(+state.cons||12)*(+state.price||1.75);
   document.getElementById('sFuel').textContent=Math.round(fuel).toLocaleString('es-ES')+' €';
@@ -743,14 +829,56 @@ function vanIcon(heading){
   const flip=(heading!=null&&!isNaN(heading)&&heading>90&&heading<270)?-1:1;
   return L.divIcon({className:'',html:`<div style="font-size:30px;line-height:1;transform:scaleX(${flip});filter:drop-shadow(0 3px 4px rgba(0,0,0,.5))">🚐</div>`,iconSize:[30,30],iconAnchor:[15,15]});
 }
-/* GPS en vivo dentro del mapa: la autocaravana te sigue en tiempo real. */
+/* GPS en vivo dentro del mapa: la autocaravana te sigue en tiempo real,
+   y recalcula la ruta (como Google Maps) si te desvías más de ~400 m del trazado. */
 let gpsWatch=null,gpsMarker=null,gpsCircle=null,gpsFollow=false;
+let liveRerouteLayer=null,lastRerouteTime=0;
+
+function nearestCoreIdxToPoint(pt){
+  const core=coreStops();
+  let best=0,bd=Infinity;
+  core.forEach((s,i)=>{const d=hav(pt,s);if(d<bd){bd=d;best=i;}});
+  return{core,idx:best};
+}
+async function checkGpsDeviation(pos){
+  const{core,idx}=nearestCoreIdxToPoint(pos);
+  if(idx>=core.length-1)return;
+  const target=core[idx+1];
+  if(hav(pos,target)<0.3){ // <300 m: llegando, sin recalcular
+    if(liveRerouteLayer){map.removeLayer(liveRerouteLayer);liveRerouteLayer=null;}
+    return;
+  }
+  const legKey=core[idx].id+'-'+target.id;
+  const routes=routesByLeg[legKey];
+  let onRoute=false;
+  if(routes&&routes.length){
+    const chosen=routes[state.routeChoices?.[legKey]||0];
+    const coords=chosen.geometry?.coordinates||[];
+    let minD=Infinity;
+    coords.forEach(c=>{const d=hav(pos,{lat:c[1],lng:c[0]});if(d<minD)minD=d;});
+    onRoute=minD<0.4; // dentro de 400 m de la línea trazada
+  }
+  const now=Date.now();
+  if(!onRoute&&now-lastRerouteTime>20000){
+    lastRerouteTime=now;
+    try{
+      const url=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.lng},${target.lat}?overview=full&geometries=geojson`;
+      const r=await fetch(url);const j=await r.json();
+      if(j.routes&&j.routes[0]){
+        if(liveRerouteLayer)map.removeLayer(liveRerouteLayer);
+        liveRerouteLayer=L.geoJSON(j.routes[0].geometry,{style:{color:'#8b5cf6',weight:5,opacity:.9,dashArray:'1 10'}}).addTo(map);
+      }
+    }catch(e){}
+  }
+}
+
 window.toggleGPS=()=>{
   const btn=document.getElementById('btnLoc');
   if(gpsWatch!=null){
     navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;gpsFollow=false;
     if(gpsMarker){map.removeLayer(gpsMarker);gpsMarker=null;}
     if(gpsCircle){map.removeLayer(gpsCircle);gpsCircle=null;}
+    if(liveRerouteLayer){map.removeLayer(liveRerouteLayer);liveRerouteLayer=null;}
     btn.classList.remove('g');btn.textContent='📍 GPS';return;
   }
   if(!navigator.geolocation){alert('Tu navegador no soporta geolocalización.');return;}
@@ -764,6 +892,7 @@ window.toggleGPS=()=>{
       gpsCircle=L.circle(ll,{radius:ac,color:'#0d6efd',fillColor:'#0d6efd',fillOpacity:.08,weight:1}).addTo(map);
     }else{gpsMarker.setLatLng(ll);gpsMarker.setIcon(vanIcon(p.coords.heading));gpsCircle.setLatLng(ll).setRadius(ac);}
     if(gpsFollow)map.setView(ll,Math.max(map.getZoom(),13),{animate:true});
+    checkGpsDeviation({lat:la,lng:ln}).catch(()=>{});
   },err=>{alert('No se pudo obtener tu ubicación: '+err.message+'\\n(Recuerda permitir el GPS y usar HTTPS).');
     btn.classList.remove('g');btn.textContent='📍 GPS';gpsWatch=null;
   },{enableHighAccuracy:true,maximumAge:2000,timeout:12000});
@@ -774,11 +903,10 @@ window.moveStop=(id,dir)=>{const i=state.stops.findIndex(x=>x.id===id);const j=i
 window.delStop=id=>{if(!confirm('¿Eliminar esta parada?'))return;state.stops=state.stops.filter(x=>x.id!==id);save();refresh();};
 
 let editing=null,insertPos=null,touchStartY=0;
-let routeAlternatives=[];let selectedRouteIdx=0;
 
 /* Modal deslizable: gestos touch para cerrar */
 function handleTouchMove(e){
-  if(!editing)return;
+  if(!editing&&insertPos==null)return;
   const currentY=e.touches[0].clientY;
   const diff=currentY-touchStartY;
   if(diff>0)document.getElementById('modalSheet').style.transform=`translateY(${diff}px)`;
@@ -794,102 +922,130 @@ function closeModal(){
   document.getElementById('modal').classList.remove('show');
   document.getElementById('backdropModal').style.display='none';
   document.getElementById('modalSheet').style.transform='translateY(0)';
-  editing=null;routeAlternatives=[];selectedRouteIdx=0;
+  editing=null;
 }
 
-/* Obtener rutas alternativas usando OSRM (up to 3 más cortas) */
+/* Obtener rutas alternativas usando OSRM (siempre devuelve al menos 1) */
 async function fetchRouteAlternatives(start,end){
   try{
     const url=`https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?alternatives=true&overview=full&geometries=geojson`;
     const r=await fetch(url);const j=await r.json();
-    if(j.routes&&j.routes.length>1)return j.routes.slice(0,3);
+    if(j.routes&&j.routes.length)return j.routes.slice(0,3);
   }catch(e){}
   return[];
 }
 
-/* Auto-rellenar parada con APIs (POIs, gasolineras, aparcamientos) */
-async function autoFillStop(lat,lng,name){
-  const stop={sights:[],parking:{name:'',free:false,web:'',note:''},camping:{name:'',web:'',tel:'',price:''},fuel:{price:0,note:''}};
+/* Geocodificación inversa: coordenadas -> "Ciudad · Provincia · País" */
+async function reverseGeocode(lat,lng){
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10`);
+    const j=await r.json();
+    if(j&&j.address){
+      const a=j.address;
+      return[a.city||a.town||a.village||a.county,a.state,a.country].filter(Boolean).join(' · ');
+    }
+  }catch(e){}
+  return null;
+}
+
+/* Auto-rellenar parada con APIs (POIs, gasolineras, aparcamientos, camping cercano) */
+async function autoFillStop(lat,lng){
+  const stop={sights:[],parking:{name:'',free:true,web:'',note:''},camping:{name:'',web:'',tel:'',price:''},fuel:{price:0,note:''}};
+  const rad=0.06; // ~6 km de radio de búsqueda
+  const bbox=`(${lat-rad},${lng-rad},${lat+rad},${lng+rad})`;
+
+  async function overpass(q){
+    try{
+      const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
+      const data=await r.json();
+      return data.elements||[];
+    }catch(e){return[];}
+  }
+  function nearest(elements){
+    let best=null,bd=Infinity;
+    elements.forEach(el=>{
+      const elat=el.lat??el.center?.lat, elng=el.lon??el.center?.lon;
+      if(elat==null)return;
+      const d=hav({lat,lng},{lat:elat,lng:elng});
+      if(d<bd){bd=d;best=el;}
+    });
+    return best;
+  }
 
   try{
-    /* Buscar POIs cercanos (Overpass API) */
-    const bbox=`(${lat-0.02},${lng-0.02},${lat+0.02},${lng+0.02})`;
-    const queries=[
-      `[out:json];(node["tourism"="attraction"]${bbox};way["tourism"="attraction"]${bbox};);out center;`,
-      `[out:json];(node["amenity"~"fuel|gas_station"]${bbox};way["amenity"~"fuel|gas_station"]${bbox};);out center;`,
-      `[out:json];(node["tourism"="campsite"]${bbox};way["tourism"="campsite"]${bbox};);out center;`
-    ];
+    const attractionEls=await overpass(`[out:json][timeout:15];(node["tourism"="attraction"]${bbox};node["tourism"="viewpoint"]${bbox};way["tourism"="attraction"]${bbox};);out center;`);
+    const best=nearest(attractionEls);
+    if(best)stop.sights.push(best.tags?.name||'Punto de interés cercano');
 
-    for(const q of queries){
-      try{
-        const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
-        const data=await r.json();
-        if(data.elements&&data.elements[0]){
-          const el=data.elements[0];
-          const tag=el.tags||{};
+    const fuelEls=await overpass(`[out:json][timeout:15];(node["amenity"="fuel"]${bbox};way["amenity"="fuel"]${bbox};);out center;`);
+    const fbest=nearest(fuelEls);
+    if(fbest)stop.fuel.note=fbest.tags?.name||fbest.tags?.brand||'Gasolinera cercana';
 
-          if(tag.tourism==='attraction'){
-            stop.sights.push(tag.name||'Atractivo turístico');
-          }
-          if(tag.amenity==='fuel'||tag.amenity==='gas_station'){
-            stop.fuel.note=tag.name||'Gasolinera';
-          }
-          if(tag.tourism==='campsite'){
-            stop.camping.name=tag.name||'Camping';
-            stop.camping.web=tag.website||'';
-            stop.camping.tel=tag.phone||'';
-          }
-        }
-      }catch(e){}
+    /* OJO: el tag correcto de OSM es tourism=camp_site (con guion bajo), no "campsite" */
+    const campEls=await overpass(`[out:json][timeout:15];(node["tourism"="camp_site"]${bbox};way["tourism"="camp_site"]${bbox};node["tourism"="caravan_site"]${bbox};way["tourism"="caravan_site"]${bbox};);out center;`);
+    const cbest=nearest(campEls);
+    if(cbest){
+      stop.camping.name=cbest.tags?.name||'Camping cercano';
+      stop.camping.web=cbest.tags?.website||cbest.tags?.['contact:website']||'';
+      stop.camping.tel=cbest.tags?.phone||cbest.tags?.['contact:phone']||'';
     }
 
-    /* Buscar aparcamientos (vías específicas) */
-    try{
-      const parkQ=`[out:json];(node["amenity"="parking"${bbox};way["amenity"="parking"]${bbox};);out center;`;
-      const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(parkQ));
-      const data=await r.json();
-      if(data.elements&&data.elements[0]){
-        const pk=data.elements[0];
-        stop.parking.name=pk.tags?.name||'Aparcamiento';
-        stop.parking.web=pk.tags?.website||'';
-        stop.parking.note=pk.tags?.description||'Aparcamiento en la zona';
-      }
-    }catch(e){}
-
+    const parkEls=await overpass(`[out:json][timeout:15];(node["amenity"="parking"]${bbox};way["amenity"="parking"]${bbox};);out center;`);
+    const pbest=nearest(parkEls);
+    if(pbest){
+      stop.parking.name=pbest.tags?.name||'Aparcamiento cercano';
+      stop.parking.web=pbest.tags?.website||'';
+      stop.parking.free=pbest.tags?.fee!=='yes';
+      stop.parking.note=pbest.tags?.fee==='yes'?'De pago (según OSM) — verifica en park4night':'Verifica disponibilidad en park4night';
+    }
   }catch(e){console.log('Auto-fill error:',e.message);}
 
   return stop;
 }
 
+/* Rellena el modal (nombre, campos) progresivamente sin bloquear su apertura */
+async function runAutoFill(lat,lng){
+  const status=document.getElementById('autoFillStatus');
+  status.style.display='block';
+  status.textContent='🔍 Buscando región, aparcamiento, camping, gasolinera y puntos de interés cercanos…';
+  try{
+    const region=await reverseGeocode(lat,lng);
+    if(region&&!G('mSub'))V('mSub',region);
+  }catch(e){}
+  const d=await autoFillStop(lat,lng);
+  if(d.sights.length&&!G('mSights'))V('mSights',d.sights.join('\n'));
+  if(d.parking.name&&!G('mPkName')){V('mPkName',d.parking.name);V('mPkWeb',d.parking.web);V('mPkNote',d.parking.note);V('mPkFree',String(d.parking.free));}
+  if(d.camping.name&&!G('mCpName')){V('mCpName',d.camping.name);V('mCpWeb',d.camping.web);V('mCpTel',d.camping.tel);}
+  if(d.fuel.note&&!G('mFuelNote'))V('mFuelNote',d.fuel.note);
+  const found=[d.sights.length&&'puntos de interés',d.parking.name&&'aparcamiento',d.camping.name&&'camping',d.fuel.note&&'gasolinera'].filter(Boolean);
+  status.textContent=found.length?('✅ Autocompletado: '+found.join(', ')):'ℹ️ Sin datos automáticos cerca (radio 6 km) — rellena a mano o pulsa "🔄 Autocompletar" tras mover el punto.';
+  setTimeout(()=>{if(status.textContent.startsWith('✅')||status.textContent.startsWith('ℹ️'))status.style.display='none';},5000);
+}
+function clearModalFields(){
+  ['mName','mSub','mSights','mPkName','mPkWeb','mPkNote','mCpName','mCpWeb','mCpTel','mCpPrice','mFuelNote'].forEach(x=>V(x,''));
+  V('mDay','');V('mNights',0);V('mToll',0);V('mFuel','');V('mType','stop');V('mPkFree','true');
+  document.getElementById('mOptional').checked=false;
+  document.getElementById('autoFillStatus').style.display='none';
+}
+
 /* Insertar una parada NUEVA justo después de la parada 'id' (estilo Google Maps).
-   La coloca de inicio en el punto medio entre esa parada y la siguiente. */
-window.insertAfter=async id=>{
+   La coloca de inicio en el punto medio entre esa parada y la siguiente.
+   El modal se abre AL INSTANTE; el autocompletado llega unos segundos después. */
+window.insertAfter=id=>{
   const i=state.stops.findIndex(x=>x.id===id);
   insertPos=i;editing=null;
   const a=state.stops[i],b=state.stops[i+1];
   const lat=b?((a.lat+b.lat)/2):a.lat, lng=b?((a.lng+b.lng)/2):a.lng;
 
-  ['mName','mSub','mSights','mPkName','mPkWeb','mPkNote','mCpName','mCpWeb','mCpTel','mCpPrice','mFuelNote'].forEach(x=>V(x,''));
-  V('mDay',a.day);V('mNights',0);V('mToll',0);V('mFuel','');V('mType','stop');V('mPkFree','true');
+  clearModalFields();
+  V('mDay',a.day);
   V('mLat',(+lat).toFixed(4));V('mLng',(+lng).toFixed(4));
-  document.getElementById('mOptional').checked=false;
   document.getElementById('routeSection').style.display='none';
-
-  /* Auto-llenar con datos de APIs */
-  const autoData=await autoFillStop(lat,lng,'Nueva parada');
-  if(autoData.sights.length)V('mSights',autoData.sights.slice(0,3).join('\n'));
-  if(autoData.parking.name)V('mPkName',autoData.parking.name);
-  if(autoData.parking.web)V('mPkWeb',autoData.parking.web);
-  if(autoData.parking.note)V('mPkNote',autoData.parking.note);
-  if(autoData.camping.name)V('mCpName',autoData.camping.name);
-  if(autoData.camping.web)V('mCpWeb',autoData.camping.web);
-  if(autoData.camping.tel)V('mCpTel',autoData.camping.tel);
-  if(autoData.fuel.note)V('mFuelNote',autoData.fuel.note);
-
   document.getElementById('modal').classList.add('show');
   document.getElementById('backdropModal').style.display='block';
+  runAutoFill(lat,lng);
 };
-window.editStop=async id=>{
+window.editStop=id=>{
   editing=id;insertPos=null;const s=state.stops.find(x=>x.id===id);
   const idx=state.stops.indexOf(s);
 
@@ -899,47 +1055,15 @@ window.editStop=async id=>{
   V('mPkName',s.parking?.name||'');V('mPkFree',String(s.parking?.free??false));V('mPkWeb',s.parking?.web||'');V('mPkNote',s.parking?.note||'');
   V('mCpName',s.camping?.name||'');V('mCpWeb',s.camping?.web||'');V('mCpTel',s.camping?.tel||'');V('mCpPrice',s.camping?.price||'');
   V('mFuel',s.fuel?.price||'');V('mFuelNote',s.fuel?.note||'');
+  document.getElementById('autoFillStatus').style.display='none';
 
-  /* Cargar rutas alternativas si no es la última parada */
-  const routeSection=document.getElementById('routeSection');
-  if(idx<state.stops.length-1){
-    routeSection.style.display='block';
-    const nextStop=state.stops[idx+1];
-    routeAlternatives=await fetchRouteAlternatives(s,nextStop);
-    renderRouteAlternatives(s.name,nextStop.name,routeAlternatives);
-  }else{
-    routeSection.style.display='none';
-  }
+  document.getElementById('routeSection').style.display=(idx<state.stops.length-1)?'block':'none';
 
   document.getElementById('modal').classList.add('show');
   document.getElementById('backdropModal').style.display='block';
 };
 function V(id,val){const e=document.getElementById(id);if(e)e.value=val;}
 function G(id){return document.getElementById(id).value;}
-
-function renderRouteAlternatives(fromName,toName,routes){
-  const cont=document.getElementById('routeOptions');cont.innerHTML='';
-  if(!routes.length){cont.innerHTML='<p class="muted">Sin rutas alternativas disponibles</p>';return;}
-  routes.forEach((route,i)=>{
-    const km=(route.distance/1000).toFixed(0);
-    const min=Math.round(route.duration/60);
-    const el=document.createElement('button');
-    el.className='route-option'+(i===0?' active':'')+' btn';
-    el.style.width='100%';
-    el.style.padding='.6rem';
-    el.style.marginBottom='.4rem';
-    el.style.justifyContent='space-between';
-    el.innerHTML=`<div style="text-align:left"><div style="font-weight:600">${i===0?'📍 Ruta recomendada':i===1?'🔄 Alternativa 2':'🔄 Alternativa '+i}</div><div class="route-info">${km} km · ${min} min</div></div>`;
-    el.onclick=(e)=>{
-      e.preventDefault();
-      selectedRouteIdx=i;
-      document.querySelectorAll('#routeOptions .route-option').forEach(x=>x.classList.remove('active'));
-      el.classList.add('active');
-      console.log('✓ Ruta '+i+' seleccionada: '+km+' km');
-    };
-    cont.appendChild(el);
-  });
-}
 
 window.btnSkipStop=()=>{
   if(!editing)return;
@@ -989,36 +1113,29 @@ document.getElementById('mSave').onclick=()=>{
   save();insertPos=null;closeModal();refresh();
 };
 document.getElementById('mCancel').onclick=closeModal;
-document.getElementById('btnAdd').onclick=async ()=>{
+document.getElementById('btnAdd').onclick=()=>{
   const c=map.getCenter();editing=null;insertPos=null;
-  ['mName','mSub','mDay','mSights','mPkName','mPkWeb','mPkNote','mCpName','mCpWeb','mCpTel','mCpPrice','mFuelNote'].forEach(i=>V(i,''));
-  V('mNights',0);V('mToll',0);V('mFuel','');V('mLat',c.lat.toFixed(4));V('mLng',c.lng.toFixed(4));V('mType','stop');V('mPkFree','true');
-  document.getElementById('mOptional').checked=false;
+  clearModalFields();
+  V('mLat',c.lat.toFixed(4));V('mLng',c.lng.toFixed(4));
   document.getElementById('routeSection').style.display='none';
-
-  /* Auto-llenar con datos de APIs */
-  const autoData=await autoFillStop(c.lat,c.lng,'Nueva parada');
-  if(autoData.sights.length)V('mSights',autoData.sights.slice(0,3).join('\n'));
-  if(autoData.parking.name)V('mPkName',autoData.parking.name);
-  if(autoData.parking.web)V('mPkWeb',autoData.parking.web);
-  if(autoData.parking.note)V('mPkNote',autoData.parking.note);
-  if(autoData.camping.name)V('mCpName',autoData.camping.name);
-  if(autoData.camping.web)V('mCpWeb',autoData.camping.web);
-  if(autoData.camping.tel)V('mCpTel',autoData.camping.tel);
-  if(autoData.fuel.note)V('mFuelNote',autoData.fuel.note);
-
   document.getElementById('modal').classList.add('show');
   document.getElementById('backdropModal').style.display='block';
+  runAutoFill(c.lat,c.lng);
+};
+document.getElementById('mAutoFill').onclick=()=>{
+  const lat=+G('mLat'),lng=+G('mLng');
+  if(!lat&&!lng){alert('Pon primero unas coordenadas (o busca el nombre).');return;}
+  runAutoFill(lat,lng);
 };
 document.getElementById('btnAddFuel').onclick=()=>{state.fuelRefs.push({zone:"Nueva referencia",price:1.70,note:""});save();renderFuel();};
 
 /* ============================ CONFIG ============================ */
 function bindCfg(){
   const map2={cCons:'cons',cPrice:'price',cFerry:'ferry'};
-  Object.entries(map2).forEach(([id,key])=>{const e=document.getElementById(id);e.value=state[key];e.oninput=()=>{state[key]=+e.value;save();updateSummary();drawRoute();};});
-  const t1=document.getElementById('tPeajes');t1.checked=state.peajesOn;t1.onchange=()=>{state.peajesOn=t1.checked;save();render();updateSummary();};
+  Object.entries(map2).forEach(([id,key])=>{const e=document.getElementById(id);e.value=state[key];e.oninput=()=>{state[key]=+e.value;save();updateSummary();};});
+  const t1=document.getElementById('tPeajes');t1.checked=state.peajesOn;t1.onchange=()=>{state.peajesOn=t1.checked;save();render();};
   const t2=document.getElementById('tShowFuel');t2.checked=state.showFuel;t2.onchange=()=>{state.showFuel=t2.checked;save();};
-  const t3=document.getElementById('tOpt');t3.checked=state.showOpt;t3.onchange=()=>{state.showOpt=t3.checked;save();refresh();drawRoute();};
+  const t3=document.getElementById('tOpt');t3.checked=state.showOpt;t3.onchange=()=>{state.showOpt=t3.checked;save();refresh();};
   document.getElementById('cfgTripName').value=state.name||'';
 }
 
@@ -1066,15 +1183,7 @@ document.getElementById('mGeo').onclick=async()=>{
   if(g){
     V('mLat',g.lat.toFixed(4));V('mLng',g.lng.toFixed(4));
     if(!G('mSub'))V('mSub',(g.display.split(',').pop()||'').trim());
-    /* Recargar rutas alternativas si estamos editando */
-    if(editing){
-      const s=state.stops.find(x=>x.id===editing);const idx=state.stops.indexOf(s);
-      if(idx<state.stops.length-1){
-        const nextStop=state.stops[idx+1];
-        routeAlternatives=await fetchRouteAlternatives({lat:+G('mLat'),lng:+G('mLng')},nextStop);
-        renderRouteAlternatives(G('mName'),nextStop.name,routeAlternatives);
-      }
-    }
+    runAutoFill(g.lat,g.lng);
   }else alert('No encontré ese lugar. Prueba a ser más específico (ej. "Oporto, Portugal") o pon las coordenadas a mano.');
 };
 
