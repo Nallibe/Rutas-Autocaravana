@@ -90,15 +90,34 @@
     #map{height:44vh;min-height:240px;flex:none}
     #panel{width:100%;max-width:100%;border-left:none;border-top:1px solid var(--linea);flex:1}
   }
+  /* ===== Portada "Viajes del Sunny" ===== */
+  #cover{position:fixed;inset:0;z-index:5000;background:#5b7cf0 url('sunny.png') center bottom/contain no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:6vh 1rem 0;text-align:center;transition:opacity .5s ease}
+  #cover.hide{opacity:0;pointer-events:none}
+  .cover-title{font-family:"Trebuchet MS","Comic Sans MS",cursive;font-size:clamp(2rem,9vw,3.4rem);font-weight:800;color:#fff;line-height:1.02;text-shadow:0 3px 0 #1b3a8f,0 6px 14px rgba(0,0,0,.45);letter-spacing:1px}
+  .cover-title span{color:#ffd23f;display:block;font-size:1.3em;text-shadow:0 3px 0 #a8620a,0 6px 14px rgba(0,0,0,.45)}
+  .cover-sub{color:#eaf0ff;font-weight:600;margin-top:.6rem;font-size:clamp(.8rem,3.5vw,1rem);text-shadow:0 1px 5px rgba(0,0,0,.5)}
+  .cover-van{font-size:clamp(2.6rem,12vw,4.4rem);margin:.7rem 0 .1rem;animation:sail 2.2s ease-in-out infinite;filter:drop-shadow(0 5px 7px rgba(0,0,0,.4))}
+  @keyframes sail{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-12px) rotate(5deg)}}
+  .cover-btn{margin-top:1.1rem;background:linear-gradient(#ffd23f,#f5a623);color:#6b3b00;border:3px solid #fff;border-radius:40px;padding:.7rem 1.9rem;font-size:clamp(1rem,4.5vw,1.3rem);font-weight:800;cursor:pointer;box-shadow:0 6px 0 #b9791a,0 12px 22px rgba(0,0,0,.35);transition:.08s}
+  .cover-btn:active{transform:translateY(4px);box-shadow:0 2px 0 #b9791a}
+  #tripSel{max-width:170px;font-weight:700;background:#fff}
 </style>
 </head>
 <body>
+<div id="cover">
+  <div class="cover-title">Viajes del <span>Sunny</span></div>
+  <div class="cover-van">🚐</div>
+  <div class="cover-sub">⚓ Planificador de rutas en autocaravana ⚓</div>
+  <button class="cover-btn" id="coverGo">¡Zarpar! 🏴‍☠️</button>
+</div>
 <div id="app">
   <header>
     <div class="hbar">
-      <h1>🚐 RoadTrip Italia
-        <small>Zaragoza ⇄ Italia · Autocaravana 7,5 m · 20 días · vuelta en ferry desde Roma</small>
+      <h1>🚐 Viajes del Sunny
+        <small>Planificador de rutas en autocaravana · mapas reales · GPS · campings & gasolineras</small>
       </h1>
+      <select class="btn" id="tripSel" title="Cambiar de viaje"></select>
+      <button class="btn p" id="btnNewTrip" title="Crear un viaje nuevo">＋ Viaje</button>
       <button class="btn" id="btnLoc" title="GPS en vivo">📍 GPS</button>
       <button class="btn g" id="btnFit">Ver ruta</button>
       <button class="btn" id="btnExport">Exportar</button>
@@ -151,6 +170,13 @@
 
       <!-- AJUSTES -->
       <div class="tabc" id="tab-cfg">
+        <div class="field"><label>Nombre de este viaje</label><input id="cfgTripName"></div>
+        <div class="acts" style="margin-bottom:.7rem">
+          <button class="btn" id="btnRename">💾 Renombrar</button>
+          <button class="btn p" id="btnNewTrip2">＋ Nuevo viaje</button>
+          <button class="btn d" id="btnDelTrip">🗑️ Eliminar viaje</button>
+        </div>
+        <div class="divider"></div>
         <label class="toggle"><input type="checkbox" id="tPeajes" checked> Incluir peajes en el presupuesto</label>
         <label class="toggle"><input type="checkbox" id="tShowFuel" checked> Mostrar capa de gasolineras en el mapa</label>
         <label class="toggle"><input type="checkbox" id="tOpt" checked> Mostrar paradas opcionales</label>
@@ -185,6 +211,7 @@
   <div style="background:#fff;border-radius:14px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:1rem;box-shadow:0 10px 40px rgba(0,0,0,.3)">
     <h3 style="margin:.1rem 0 .8rem">Editar parada</h3>
     <div class="field"><label>Nombre</label><input id="mName"></div>
+    <button class="btn p" id="mGeo" style="width:100%;margin-bottom:.55rem">🔎 Buscar coordenadas por el nombre</button>
     <div class="field"><label>Subtítulo / región</label><input id="mSub"></div>
     <div class="field row">
       <div style="flex:1"><label>Día(s)</label><input id="mDay"></div>
@@ -339,11 +366,69 @@ const SEED = {
   ]
 };
 
-/* ============================ ESTADO ============================ */
-const KEY="roadtrip-italia-v1";
-let state=load();
-function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.stops)return s;}catch(e){}return structuredClone(SEED);}
-function save(){localStorage.setItem(KEY,JSON.stringify(state));}
+/* ============================ ESTADO MULTI-VIAJE ============================ */
+const KEY="roadtrip-multi-v2";
+const OLDKEY="roadtrip-italia-v1";
+function italiaTrip(){return Object.assign({name:"🇮🇹 Italia · 20 días"},structuredClone(SEED));}
+function defaultApp(){return {activeId:"italia",trips:{italia:italiaTrip()}};}
+function loadApp(){
+  try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.trips&&s.activeId)return s;}catch(e){}
+  try{const old=JSON.parse(localStorage.getItem(OLDKEY));if(old&&old.stops)return {activeId:"italia",trips:{italia:Object.assign({name:"🇮🇹 Italia · 20 días"},old)}};}catch(e){}
+  return defaultApp();
+}
+let app=loadApp();
+if(!app.trips[app.activeId])app.activeId=Object.keys(app.trips)[0];
+let state=app.trips[app.activeId];
+function save(){localStorage.setItem(KEY,JSON.stringify(app));}
+
+/* Geocodificación (OpenStreetMap Nominatim): convierte "Lisboa" -> lat/lng.
+   Requiere internet. Detecta las coordenadas para cualquier país/lugar. */
+async function geocode(q){
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q));
+    const j=await r.json();
+    if(j&&j[0])return {lat:+j[0].lat,lng:+j[0].lon,display:j[0].display_name};
+  }catch(e){}
+  return null;
+}
+
+/* Cambiar de viaje activo */
+function setActive(id){
+  if(!app.trips[id])return;
+  app.activeId=id;state=app.trips[id];lastKm=null;save();
+  refresh();bindCfg();renderTripSelector();
+  setTimeout(fitRoute,300);
+}
+function renderTripSelector(){
+  const sel=document.getElementById('tripSel');sel.innerHTML='';
+  Object.entries(app.trips).forEach(([id,t])=>{
+    const o=document.createElement('option');o.value=id;o.textContent=t.name;if(id===app.activeId)o.selected=true;sel.appendChild(o);
+  });
+}
+async function newTrip(){
+  const name=prompt('Nombre del nuevo viaje (ej. "🇵🇹 Portugal" o "🇫🇷 Francia costa"):');
+  if(!name)return;
+  const start=prompt('Ciudad/lugar de SALIDA (la busco en el mapa automáticamente):','Zaragoza');
+  if(start===null)return;
+  let lat=map.getCenter().lat,lng=map.getCenter().lng,sub='Salida';
+  const g=await geocode(start);
+  if(g){lat=g.lat;lng=g.lng;sub=(g.display.split(',').pop()||'Salida').trim();}
+  else alert('No encontré ese lugar; coloco la salida en el centro del mapa. Edítala luego con "✏️ Editar" o "🔎 Buscar".');
+  const id='t'+Date.now();
+  app.trips[id]={name,cons:12,price:1.75,ferry:0,peajesOn:true,showFuel:true,showOpt:true,
+    fuelRefs:structuredClone(SEED.fuelRefs),
+    stops:[{id:Date.now(),day:'D1',name:start,sub,lat,lng,nights:0,toll:0,optional:false,type:'stop',
+      sights:[],parking:{name:'Punto de salida',free:true,web:'',note:''},camping:null,fuel:{price:0,note:''}}]};
+  setActive(id);
+  alert('✅ Viaje "'+name+'" creado.\n\nAñade paradas con "➕ Añadir parada". Los KM y la ruta por carretera se calculan SOLOS, y cada parada tiene los mismos campos: 🅿️ parking, 🏕️ camping, ⛽ gasolina, 🛣️ peaje, 🎥 vídeos y 🧭 GPS.\n\nPara colocar cada parada por nombre usa el botón "🔎 Buscar coordenadas".');
+}
+function delTrip(){
+  if(Object.keys(app.trips).length<=1){alert('Es tu único viaje; no puedo borrarlo. Crea otro primero.');return;}
+  if(app.activeId==='italia'){alert('El viaje de Italia es el de por defecto. Usa "Reiniciar" para restaurarlo, pero no se borra.');return;}
+  if(!confirm('¿Eliminar el viaje "'+state.name+'"? No se puede deshacer.'))return;
+  delete app.trips[app.activeId];
+  setActive(Object.keys(app.trips)[0]);
+}
 
 /* ============================ MAPA ============================ */
 const map=L.map('map',{zoomControl:true}).setView([44,8],5);
@@ -423,8 +508,8 @@ function updateSummary(km){
   document.getElementById('sPeaje').textContent=state.peajesOn?peajes.toLocaleString('es-ES')+' €':'—';
   const fuel=K/100*(+state.cons||12)*(+state.price||1.75);
   document.getElementById('sFuel').textContent=Math.round(fuel).toLocaleString('es-ES')+' €';
-  const days=new Set(state.stops.flatMap(s=>String(s.day).match(/\d+/g)||[]));
-  document.getElementById('sDias').textContent=20;
+  const dayNums=state.stops.flatMap(s=>String(s.day).match(/\d+/g)||[]).map(Number);
+  document.getElementById('sDias').textContent=dayNums.length?Math.max(...dayNums):state.stops.length;
 }
 
 /* ============================ RENDER LISTA ============================ */
@@ -482,7 +567,12 @@ window.navTo=(lat,lng,name)=>{
   window.open(url,'_blank');
 };
 
-/* GPS en vivo dentro del mapa: punto azul que te sigue en tiempo real. */
+/* Icono de autocaravana para el GPS; se voltea según la dirección de marcha. */
+function vanIcon(heading){
+  const flip=(heading!=null&&!isNaN(heading)&&heading>90&&heading<270)?-1:1;
+  return L.divIcon({className:'',html:`<div style="font-size:30px;line-height:1;transform:scaleX(${flip});filter:drop-shadow(0 3px 4px rgba(0,0,0,.5))">🚐</div>`,iconSize:[30,30],iconAnchor:[15,15]});
+}
+/* GPS en vivo dentro del mapa: la autocaravana te sigue en tiempo real. */
 let gpsWatch=null,gpsMarker=null,gpsCircle=null,gpsFollow=false;
 window.toggleGPS=()=>{
   const btn=document.getElementById('btnLoc');
@@ -497,9 +587,9 @@ window.toggleGPS=()=>{
   gpsWatch=navigator.geolocation.watchPosition(p=>{
     const la=p.coords.latitude,ln=p.coords.longitude,ac=p.coords.accuracy;const ll=[la,ln];
     if(!gpsMarker){
-      gpsMarker=L.marker(ll,{zIndexOffset:1000,icon:L.divIcon({className:'',html:'<div style="width:18px;height:18px;background:#0d6efd;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px rgba(13,110,253,.35),0 1px 5px rgba(0,0,0,.5)"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map).bindPopup('Estás aquí');
+      gpsMarker=L.marker(ll,{zIndexOffset:1000,icon:vanIcon(p.coords.heading)}).addTo(map).bindPopup('🚐 ¡Aquí va el Sunny!');
       gpsCircle=L.circle(ll,{radius:ac,color:'#0d6efd',fillColor:'#0d6efd',fillOpacity:.08,weight:1}).addTo(map);
-    }else{gpsMarker.setLatLng(ll);gpsCircle.setLatLng(ll).setRadius(ac);}
+    }else{gpsMarker.setLatLng(ll);gpsMarker.setIcon(vanIcon(p.coords.heading));gpsCircle.setLatLng(ll).setRadius(ac);}
     if(gpsFollow)map.setView(ll,Math.max(map.getZoom(),13),{animate:true});
   },err=>{alert('No se pudo obtener tu ubicación: '+err.message+'\\n(Recuerda permitir el GPS y usar HTTPS).');
     btn.classList.remove('g');btn.textContent='📍 GPS';gpsWatch=null;
@@ -553,6 +643,7 @@ function bindCfg(){
   const t1=document.getElementById('tPeajes');t1.checked=state.peajesOn;t1.onchange=()=>{state.peajesOn=t1.checked;save();render();};
   const t2=document.getElementById('tShowFuel');t2.checked=state.showFuel;t2.onchange=()=>{state.showFuel=t2.checked;save();};
   const t3=document.getElementById('tOpt');t3.checked=state.showOpt;t3.onchange=()=>{state.showOpt=t3.checked;save();refresh();};
+  document.getElementById('cfgTripName').value=state.name||'';
 }
 
 /* ============================ TABS ============================ */
@@ -563,24 +654,51 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
 });
 
 /* ============================ TOOLBAR ============================ */
-document.getElementById('btnFit').onclick=()=>{const g=L.featureGroup(markers);if(markers.length)map.fitBounds(g.getBounds().pad(.15));};
+function fitRoute(){if(markers.length){const g=L.featureGroup(markers);map.fitBounds(g.getBounds().pad(.15));}}
+document.getElementById('btnFit').onclick=fitRoute;
+document.getElementById('tripSel').onchange=e=>setActive(e.target.value);
+document.getElementById('btnNewTrip').onclick=newTrip;
+document.getElementById('btnNewTrip2').onclick=newTrip;
+document.getElementById('btnDelTrip').onclick=delTrip;
+document.getElementById('btnRename').onclick=()=>{const v=document.getElementById('cfgTripName').value.trim();if(!v)return;state.name=v;save();renderTripSelector();alert('Renombrado ✔');};
 document.getElementById('btnLoc').onclick=()=>toggleGPS();
-document.getElementById('btnReset').onclick=()=>{if(confirm('¿Restaurar el viaje original? Perderás tus cambios.')){state=structuredClone(SEED);save();refresh();bindCfg();}};
+document.getElementById('btnReset').onclick=()=>{if(confirm('¿Restaurar el viaje de Italia a su versión original? (No afecta a tus otros viajes)')){app.trips.italia=italiaTrip();setActive('italia');}};
 document.getElementById('btnExport').onclick=()=>{
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='roadtrip-italia.json';a.click();
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=(state.name||'viaje').replace(/[^\w]+/g,'-').toLowerCase()+'.json';a.click();
 };
 document.getElementById('btnImport').onclick=()=>document.getElementById('fileImport').click();
 document.getElementById('fileImport').onchange=e=>{
   const f=e.target.files[0];if(!f)return;const r=new FileReader();
-  r.onload=()=>{try{state=JSON.parse(r.result);save();refresh();bindCfg();alert('Viaje importado ✔');}catch(err){alert('Archivo no válido');}};
+  r.onload=()=>{try{
+    const d=JSON.parse(r.result);
+    if(d&&d.trips){app=d;if(!app.trips[app.activeId])app.activeId=Object.keys(app.trips)[0];state=app.trips[app.activeId];save();setActive(app.activeId);alert('Todos los viajes importados ✔');}
+    else if(d&&d.stops){const id='t'+Date.now();app.trips[id]=Object.assign({name:d.name||'Viaje importado'},d);setActive(id);alert('Viaje importado como "'+app.trips[id].name+'" ✔');}
+    else alert('Archivo no reconocido.');
+  }catch(err){alert('Archivo no válido');}};
   r.readAsText(f);
+};
+
+/* Geocodificar el nombre de la parada en el editor */
+document.getElementById('mGeo').onclick=async()=>{
+  const q=G('mName');if(!q){alert('Escribe primero el nombre del lugar.');return;}
+  const b=document.getElementById('mGeo');const t=b.textContent;b.textContent='Buscando…';b.disabled=true;
+  const g=await geocode(q);b.textContent=t;b.disabled=false;
+  if(g){V('mLat',g.lat.toFixed(4));V('mLng',g.lng.toFixed(4));if(!G('mSub'))V('mSub',(g.display.split(',').pop()||'').trim());}
+  else alert('No encontré ese lugar. Prueba a ser más específico (ej. "Oporto, Portugal") o pon las coordenadas a mano.');
+};
+
+/* Portada "Viajes del Sunny" */
+document.getElementById('coverGo').onclick=()=>{
+  document.getElementById('cover').classList.add('hide');
+  setTimeout(()=>{document.getElementById('cover').style.display='none';map.invalidateSize();fitRoute();},550);
 };
 
 /* ============================ INIT ============================ */
 function refresh(){drawMarkers();drawRoute();render();}
-refresh();bindCfg();
-setTimeout(()=>{const g=L.featureGroup(markers);if(markers.length)map.fitBounds(g.getBounds().pad(.15));},400);
+renderTripSelector();refresh();bindCfg();
+setTimeout(()=>{map.invalidateSize();fitRoute();},400);
 </script>
 </body>
 </html>
