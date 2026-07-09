@@ -98,7 +98,8 @@
     #map{position:absolute;inset:0;height:auto}
     /* position:FIXED (no absolute) y z-index por encima del header (1000):
        así el panel expandido nunca queda debajo/detrás de la barra superior. */
-    #panel{position:fixed;left:0;right:0;bottom:0;width:100%;max-width:100%;border-left:none;border-top:none;border-radius:18px 18px 0 0;box-shadow:0 -6px 20px rgba(0,0,0,.18);height:42vh;height:calc(var(--vh,1vh) * 42);max-height:78vh;min-height:160px;z-index:1500;transition:height .28s ease}
+    /* Colapsado = solo un "vistazo" (tirador + pestañas), NO la mitad de la pantalla */
+    #panel{position:fixed;left:0;right:0;bottom:0;width:100%;max-width:100%;border-left:none;border-top:none;border-radius:18px 18px 0 0;box-shadow:0 -6px 20px rgba(0,0,0,.18);height:96px;max-height:78vh;min-height:96px;z-index:1500;transition:height .28s ease}
     #panel.expanded{height:78vh;height:calc(var(--vh,1vh) * 78)}
     #panelHandle{display:flex;flex:0 0 auto;align-items:center;justify-content:center;min-height:40px;padding:.4rem 0;cursor:grab;touch-action:none;position:relative;background:#fff;border-radius:18px 18px 0 0}
     #panelHandle .bar{width:40px;height:5px;border-radius:3px;background:var(--linea)}
@@ -636,7 +637,7 @@ window.panelDragMove=e=>{
   const y=e.touches?e.touches[0].clientY:e.clientY;
   const diff=panelDragStartY-y;
   let h=panelStartH+diff;
-  const minH=window.innerHeight*0.18,maxH=window.innerHeight*0.88;
+  const minH=96,maxH=window.innerHeight*0.78; // 96px = mismo "vistazo" colapsado que el CSS
   h=Math.max(minH,Math.min(maxH,h));
   document.getElementById('panel').style.height=h+'px';
 };
@@ -646,7 +647,7 @@ window.panelDragEnd=()=>{
   const panel=document.getElementById('panel');
   panel.style.transition='height .28s ease';
   const h=panel.getBoundingClientRect().height;
-  if(h>window.innerHeight*0.55){panel.classList.add('expanded');document.getElementById('panelToggle').textContent='⌄';}
+  if(h>window.innerHeight*0.4){panel.classList.add('expanded');document.getElementById('panelToggle').textContent='⌄';}
   else{panel.classList.remove('expanded');document.getElementById('panelToggle').textContent='⌃';}
   panel.style.height='';
   setTimeout(()=>map.invalidateSize(),300);
