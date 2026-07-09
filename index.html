@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>RoadTrip Italia · Autocaravana 7,5m · Zaragoza ⇄ Italia</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root{
+    --verde:#1e8a4c; --rojo:#c8362f; --tinta:#1f2937; --gris:#6b7280;
+    --linea:#e5e7eb; --fondo:#f7f7f5; --panel:#ffffff; --acento:#0d6efd;
+    --sombra:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--tinta);background:var(--fondo);-webkit-text-size-adjust:100%}
+  #app{display:flex;flex-direction:column;height:100%}
+  header{background:linear-gradient(90deg,var(--verde),#fff 35% 65%,var(--rojo));padding:0;position:relative;box-shadow:var(--sombra);z-index:1000}
+  .hbar{background:rgba(255,255,255,.92);backdrop-filter:blur(6px);display:flex;align-items:center;gap:.6rem;padding:.55rem .8rem;flex-wrap:wrap}
+  .hbar h1{font-size:1rem;margin:0;font-weight:700;letter-spacing:-.2px;flex:1;min-width:180px}
+  .hbar h1 small{display:block;font-weight:500;color:var(--gris);font-size:.72rem;margin-top:1px}
+  .btn{border:1px solid var(--linea);background:#fff;color:var(--tinta);border-radius:8px;padding:.4rem .6rem;font-size:.78rem;cursor:pointer;font-weight:600;white-space:nowrap;transition:.15s}
+  .btn:hover{background:#f0f0ef}
+  .btn.p{background:var(--acento);color:#fff;border-color:var(--acento)}
+  .btn.p:hover{filter:brightness(.94)}
+  .btn.g{background:var(--verde);color:#fff;border-color:var(--verde)}
+  .btn.d{background:#fff;color:var(--rojo);border-color:#f2c9c7}
+  main{flex:1;display:flex;min-height:0}
+  #map{flex:1;min-height:280px;background:#dfe6e9}
+  #panel{width:420px;max-width:46%;background:var(--panel);border-left:1px solid var(--linea);overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column}
+  .tabs{display:flex;position:sticky;top:0;background:#fff;border-bottom:1px solid var(--linea);z-index:5}
+  .tab{flex:1;text-align:center;padding:.6rem .3rem;font-size:.76rem;font-weight:700;color:var(--gris);cursor:pointer;border-bottom:2px solid transparent}
+  .tab.on{color:var(--acento);border-bottom-color:var(--acento)}
+  .tabc{padding:.7rem .8rem;display:none}
+  .tabc.on{display:block}
+  .sum{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.7rem}
+  .card{background:var(--fondo);border:1px solid var(--linea);border-radius:10px;padding:.55rem .65rem}
+  .card b{display:block;font-size:1.15rem;line-height:1.1}
+  .card span{font-size:.68rem;color:var(--gris);text-transform:uppercase;letter-spacing:.4px;font-weight:700}
+  .field{margin-bottom:.55rem}
+  .field label{display:block;font-size:.7rem;font-weight:700;color:var(--gris);margin-bottom:.2rem;text-transform:uppercase;letter-spacing:.3px}
+  .field input,.field select,.field textarea{width:100%;border:1px solid var(--linea);border-radius:8px;padding:.45rem .55rem;font-size:.85rem;font-family:inherit;background:#fff}
+  .field .row{display:flex;gap:.4rem}
+  .stop{border:1px solid var(--linea);border-radius:12px;margin-bottom:.6rem;overflow:hidden;background:#fff}
+  .stop.optional{border-style:dashed;opacity:.92}
+  .stop-h{display:flex;align-items:center;gap:.55rem;padding:.6rem .65rem;cursor:pointer}
+  .daychip{background:var(--tinta);color:#fff;font-size:.66rem;font-weight:800;border-radius:6px;padding:.2rem .4rem;white-space:nowrap;min-width:44px;text-align:center}
+  .stop.ferry .daychip{background:var(--acento)}
+  .stop.optional .daychip{background:var(--gris)}
+  .stop-h .nm{flex:1;font-weight:700;font-size:.9rem;line-height:1.15}
+  .stop-h .nm small{display:block;color:var(--gris);font-weight:500;font-size:.72rem}
+  .stop-h .km{font-size:.72rem;color:var(--gris);font-weight:700;white-space:nowrap}
+  .stop-b{padding:0 .65rem .65rem;font-size:.82rem;display:none;border-top:1px dashed var(--linea)}
+  .stop-b.open{display:block}
+  .stop-b .lbl{font-size:.68rem;font-weight:800;color:var(--verde);text-transform:uppercase;letter-spacing:.4px;margin:.6rem 0 .2rem}
+  .stop-b .lbl.pk{color:var(--acento)}.stop-b .lbl.cp{color:var(--rojo)}.stop-b .lbl.fu{color:#b8860b}
+  .stop-b ul{margin:.2rem 0;padding-left:1.1rem}
+  .stop-b li{margin:.12rem 0}
+  .stop-b a{color:var(--acento);text-decoration:none;word-break:break-word}
+  .stop-b a:hover{text-decoration:underline}
+  .pill{display:inline-block;font-size:.66rem;font-weight:700;padding:.12rem .4rem;border-radius:20px;margin:.1rem .2rem .1rem 0}
+  .pill.free{background:#dff5e6;color:var(--verde)}
+  .pill.pay{background:#fdeaea;color:var(--rojo)}
+  .acts{display:flex;gap:.35rem;margin-top:.6rem;flex-wrap:wrap}
+  .acts .btn{padding:.32rem .5rem;font-size:.72rem}
+  .tip{background:#fff8e6;border:1px solid #f3e2a9;border-radius:10px;padding:.6rem .7rem;margin-bottom:.6rem;font-size:.8rem;line-height:1.4}
+  .tip b{color:#8a6d00}
+  .tip.warn{background:#fdeceb;border-color:#f3c2bf}
+  .tip.warn b{color:var(--rojo)}
+  .muted{color:var(--gris);font-size:.76rem;line-height:1.45}
+  .toggle{display:flex;align-items:center;gap:.5rem;padding:.4rem 0;font-size:.84rem;font-weight:600}
+  .toggle input{width:38px;height:22px;-webkit-appearance:none;appearance:none;background:#ccc;border-radius:20px;position:relative;cursor:pointer;transition:.2s;flex:0 0 auto}
+  .toggle input:checked{background:var(--verde)}
+  .toggle input::after{content:"";position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:2px;left:2px;transition:.2s}
+  .toggle input:checked::after{left:18px}
+  .legend{display:flex;flex-wrap:wrap;gap:.5rem;margin:.3rem 0 .6rem}
+  .legend span{display:flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--gris)}
+  .dot{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15)}
+  table.cmp{width:100%;border-collapse:collapse;font-size:.78rem;margin-top:.3rem}
+  table.cmp th,table.cmp td{border-bottom:1px solid var(--linea);padding:.35rem .3rem;text-align:left}
+  table.cmp th{font-size:.66rem;text-transform:uppercase;color:var(--gris);letter-spacing:.3px}
+  table.cmp input{width:62px;border:1px solid var(--linea);border-radius:6px;padding:.2rem .3rem;font-size:.78rem}
+  .leaflet-popup-content{font-size:.83rem;line-height:1.4;margin:.7rem .8rem}
+  .leaflet-popup-content h3{margin:0 0 .2rem;font-size:.92rem}
+  .leaflet-popup-content a{color:var(--acento)}
+  .divider{height:1px;background:var(--linea);margin:.7rem 0}
+  @media (max-width:820px){
+    main{flex-direction:column}
+    #map{height:44vh;min-height:240px;flex:none}
+    #panel{width:100%;max-width:100%;border-left:none;border-top:1px solid var(--linea);flex:1}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="hbar">
+      <h1>🚐 RoadTrip Italia
+        <small>Zaragoza ⇄ Italia · Autocaravana 7,5 m · 20 días · vuelta en ferry desde Roma</small>
+      </h1>
+      <button class="btn" id="btnLoc" title="GPS en vivo">📍 GPS</button>
+      <button class="btn g" id="btnFit">Ver ruta</button>
+      <button class="btn" id="btnExport">Exportar</button>
+      <button class="btn" id="btnImport">Importar</button>
+      <input type="file" id="fileImport" accept="application/json" hidden>
+      <button class="btn d" id="btnReset">Reiniciar</button>
+    </div>
+  </header>
+  <main>
+    <div id="map"></div>
+    <aside id="panel">
+      <div class="tabs">
+        <div class="tab on" data-tab="ruta">🗺️ Ruta</div>
+        <div class="tab" data-tab="fuel">⛽ Gasolina</div>
+        <div class="tab" data-tab="cfg">⚙️ Ajustes</div>
+        <div class="tab" data-tab="tips">💡 Consejos</div>
+      </div>
+
+      <!-- RUTA -->
+      <div class="tabc on" id="tab-ruta">
+        <div class="sum">
+          <div class="card"><span>Distancia conducida</span><b id="sKm">—</b></div>
+          <div class="card"><span>Días</span><b id="sDias">20</b></div>
+          <div class="card"><span>Peajes (editable)</span><b id="sPeaje">—</b></div>
+          <div class="card"><span>Combustible est.</span><b id="sFuel">—</b></div>
+        </div>
+        <div class="legend">
+          <span><i class="dot" style="background:#c8362f"></i>Ciudad/parada</span>
+          <span><i class="dot" style="background:#0d6efd"></i>Ferry</span>
+          <span><i class="dot" style="background:#6b7280"></i>Opcional</span>
+        </div>
+        <div id="stops"></div>
+        <button class="btn p" id="btnAdd" style="width:100%;margin-top:.3rem">➕ Añadir parada</button>
+      </div>
+
+      <!-- GASOLINA -->
+      <div class="tabc" id="tab-fuel">
+        <p class="muted">Precios <b>indicativos y editables</b> (€/L gasóleo A). El precio real cambia a diario: para comparar en vivo usa
+          <a href="https://geoportalgasolineras.es/" target="_blank">Geoportal Gasolineras (ES)</a>,
+          <a href="https://carburanti.mise.gov.it/ospzSearch/" target="_blank">Osservaprezzi Carburanti (IT)</a> y
+          <a href="https://www.prix-carburants.gouv.fr/" target="_blank">Prix Carburants (FR)</a>.</p>
+        <table class="cmp">
+          <thead><tr><th>Zona / marca</th><th>€/L</th><th>Nota</th></tr></thead>
+          <tbody id="fuelBody"></tbody>
+        </table>
+        <button class="btn" id="btnAddFuel" style="margin-top:.6rem">➕ Añadir referencia</button>
+        <div class="divider"></div>
+        <div class="tip"><b>Truco:</b> en Italia reposta en <b>“fai da te”</b> (autoservicio), NO en “servito”: hasta 15–20 cts/L más barato. Evita repostar dentro de la <b>autostrada</b>; sal a poblaciones. En Francia, hipermercados (Leclerc, Carrefour) son los más baratos.</div>
+      </div>
+
+      <!-- AJUSTES -->
+      <div class="tabc" id="tab-cfg">
+        <label class="toggle"><input type="checkbox" id="tPeajes" checked> Incluir peajes en el presupuesto</label>
+        <label class="toggle"><input type="checkbox" id="tShowFuel" checked> Mostrar capa de gasolineras en el mapa</label>
+        <label class="toggle"><input type="checkbox" id="tOpt" checked> Mostrar paradas opcionales</label>
+        <p class="muted" style="margin:.3rem 0 .7rem">La ruta del mapa se calcula con OSRM (ruta más rápida por carretera; no distingue peaje/no peaje). El <b>importe de peajes</b> es editable por tramo en cada parada — así puedes simular “con peaje” vs “sin peaje” a tu criterio.</p>
+        <div class="divider"></div>
+        <div class="field"><label>Consumo autocaravana (L/100 km)</label><input type="number" id="cCons" value="12" step="0.5" min="4"></div>
+        <div class="field"><label>Precio medio combustible (€/L)</label><input type="number" id="cPrice" value="1.75" step="0.01" min="0.5"></div>
+        <p class="muted">Con estos dos valores + los km de ruta calculo el <b>coste estimado de combustible</b> del viaje completo.</p>
+        <div class="divider"></div>
+        <div class="field"><label>Coste ferry Civitavecchia→Barcelona (€, ida camper + camarote)</label><input type="number" id="cFerry" value="520" step="10"></div>
+        <p class="muted">Se suma al presupuesto de peajes/costes. Reserva y tarifa real en
+          <a href="https://www.grimaldi-lines.com/es/" target="_blank">Grimaldi Lines</a> (descuento autocaravana ≤ 9 m).</p>
+      </div>
+
+      <!-- CONSEJOS -->
+      <div class="tabc" id="tab-tips">
+        <div class="tip warn"><b>⚠️ Costa Amalfitana (SS163):</b> NO apta para autocaravana de 7,5 m — carretera estrechísima y con <b>prohibición estacional a autocaravanas</b>. Aparca en Sorrento (camping) y visita Positano/Amalfi en <b>bus SITA, tren Circumvesuviana o ferry</b>.</div>
+        <div class="tip warn"><b>⚠️ ZTL (Zona Traffico Limitato):</b> los centros históricos italianos están cerrados al tráfico — entrar con la camper = multa automática por cámara. Aparca SIEMPRE en el área/camping de las afueras y entra en transporte público o a pie.</div>
+        <div class="tip"><b>🅿️ Pernocta:</b> verifica cada plaza en vivo con <a href="https://park4night.com/es" target="_blank">park4night</a> y <a href="https://www.campercontact.com/es" target="_blank">CamperContact</a> (reseñas y estado reales de la comunidad). “Area di sosta” = área de servicio para autocaravanas.</div>
+        <div class="tip"><b>🛣️ Peajes:</b> Francia (télépéage/tarjeta) e Italia (autostrade) tienen peaje por clase de vehículo — una camper suele ir en <b>clase B/2</b> (más cara que un coche). Lleva efectivo y tarjeta; considera un <b>Telepass</b> si haces muchos km en Italia.</div>
+        <div class="tip"><b>🅿️ Vignette / LEZ:</b> algunas ciudades (Milán = Area C/B) tienen zonas de bajas emisiones. Aparcando fuera y usando transporte lo evitas.</div>
+        <div class="tip"><b>⛴️ Ferry:</b> Civitavecchia→Barcelona ~20 h. Reserva plaza “camper on board” (te puedes quedar en el vehículo en algunas salidas) o camarote. Llega 2 h antes al puerto.</div>
+        <div class="tip"><b>💧 Servicios:</b> descarga aguas grises/negras y llena limpia en las áreas de sosta (“camper service”). Muchas gasolineras italianas grandes también tienen punto.</div>
+        <p class="muted">Enlaces de reserva de campings/áreas: <a href="https://www.acsi.eu/es" target="_blank">ACSI (tarjeta descuento camping)</a> · <a href="https://www.pitchup.com/es/" target="_blank">Pitchup</a>.</p>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<!-- Editor modal -->
+<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;align-items:center;justify-content:center;padding:1rem">
+  <div style="background:#fff;border-radius:14px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:1rem;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+    <h3 style="margin:.1rem 0 .8rem">Editar parada</h3>
+    <div class="field"><label>Nombre</label><input id="mName"></div>
+    <div class="field"><label>Subtítulo / región</label><input id="mSub"></div>
+    <div class="field row">
+      <div style="flex:1"><label>Día(s)</label><input id="mDay"></div>
+      <div style="flex:1"><label>Noches</label><input id="mNights" type="number" min="0"></div>
+    </div>
+    <div class="field row">
+      <div style="flex:1"><label>Latitud</label><input id="mLat" type="number" step="0.0001"></div>
+      <div style="flex:1"><label>Longitud</label><input id="mLng" type="number" step="0.0001"></div>
+    </div>
+    <div class="field row">
+      <div style="flex:1"><label>Tipo</label>
+        <select id="mType"><option value="stop">Parada</option><option value="ferry">Ferry</option></select>
+      </div>
+      <div style="flex:1"><label>Peaje tramo (€)</label><input id="mToll" type="number" step="1" min="0"></div>
+    </div>
+    <label class="toggle"><input type="checkbox" id="mOptional"> Parada opcional (desvío)</label>
+    <div class="field"><label>Qué ver (uno por línea)</label><textarea id="mSights" rows="3"></textarea></div>
+    <div class="divider"></div>
+    <div class="field"><label>🅿️ Aparcamiento — nombre</label><input id="mPkName"></div>
+    <div class="field row">
+      <div style="flex:1"><label>¿Gratis pernocta?</label><select id="mPkFree"><option value="true">Sí, gratuito</option><option value="false">De pago</option></select></div>
+      <div style="flex:2"><label>Web/tel aparcamiento</label><input id="mPkWeb"></div>
+    </div>
+    <div class="field"><label>Nota aparcamiento</label><input id="mPkNote"></div>
+    <div class="divider"></div>
+    <div class="field"><label>🏕️ Camping — nombre</label><input id="mCpName"></div>
+    <div class="field row">
+      <div style="flex:2"><label>Web camping</label><input id="mCpWeb"></div>
+      <div style="flex:1"><label>Teléfono</label><input id="mCpTel"></div>
+    </div>
+    <div class="field"><label>Precio aprox. camping</label><input id="mCpPrice"></div>
+    <div class="divider"></div>
+    <div class="field row">
+      <div style="flex:1"><label>⛽ Precio zona (€/L)</label><input id="mFuel" type="number" step="0.01"></div>
+      <div style="flex:2"><label>Nota gasolinera</label><input id="mFuelNote"></div>
+    </div>
+    <div class="acts" style="justify-content:flex-end;margin-top:.9rem">
+      <button class="btn" id="mCancel">Cancelar</button>
+      <button class="btn p" id="mSave">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ============================ DATOS SEMILLA ============================ */
+/* Coordenadas reales. Campings/áreas reales conocidas + verificar en vivo (park4night). */
+const SEED = {
+  cons:12, price:1.75, ferry:520, peajesOn:true, showFuel:true, showOpt:true,
+  fuelRefs:[
+    {zone:"España (fuera autopista)", price:1.52, note:"Lo más barato del viaje"},
+    {zone:"Francia (hipermercado Leclerc)", price:1.72, note:"Reposta antes de la autoroute"},
+    {zone:"Francia (autoroute)", price:1.92, note:"Caro, evitar"},
+    {zone:"Italia · fai da te", price:1.72, note:"Autoservicio, más barato"},
+    {zone:"Italia · servito", price:1.90, note:"Con empleado, evitar"},
+    {zone:"Italia · autostrada", price:1.95, note:"El más caro, evitar"}
+  ],
+  stops:[
+    {id:1,day:"D1",name:"Zaragoza",sub:"Salida · España",lat:41.6488,lng:-0.8891,nights:0,toll:0,optional:false,type:"stop",
+      sights:["Basílica del Pilar","Repostar barato antes de salir","Revisión niveles agua/gas"],
+      parking:{name:"Base de salida",free:true,web:"",note:"Punto de partida"},camping:null,fuel:{price:1.50,note:"Reposta lleno aquí, España es lo más barato"}},
+
+    {id:2,day:"D1",name:"Girona",sub:"Cataluña · España",lat:41.9794,lng:2.8214,nights:1,toll:12,optional:false,type:"stop",
+      sights:["Casco antiguo y murallas","Casas del río Oñar","Catedral"],
+      parking:{name:"Àrea autocaravanes Girona / Fornells",free:false,web:"https://park4night.com/es",note:"Varias áreas cercanas — verifica en park4night"},
+      camping:{name:"Camping Can Toni Manescal",web:"https://park4night.com/es",tel:"",price:"~24€"},fuel:{price:1.53,note:""}},
+
+    {id:3,day:"D2",name:"Niza / Antibes",sub:"Costa Azul · Francia",lat:43.6045,lng:7.0762,nights:1,toll:48,optional:false,type:"stop",
+      sights:["Paseo de los Ingleses (Niza)","Casco viejo de Antibes","Miradores de la Riviera"],
+      parking:{name:"Aire camping-car Antibes",free:false,web:"https://park4night.com/es",note:"Costa cara: reserva área. Peaje A9/A8 alto"},
+      camping:{name:"Camping Antipolis / Le Fréjus",web:"https://park4night.com/es",tel:"",price:"~35€ (temporada alta)"},fuel:{price:1.85,note:"Reposta en Leclerc antes de la autoroute"}},
+
+    {id:4,day:"D3",name:"Turín (Torino)",sub:"Piamonte · Italia",lat:45.0703,lng:7.6869,nights:2,toll:22,optional:false,type:"stop",
+      sights:["Mole Antonelliana + Museo del Cine","Piazza Castello y Palazzo Reale","Café histórico + chocolate gianduiotto","Museo Egipcio (2º mejor del mundo)"],
+      parking:{name:"Area Sosta Camper Torino",free:false,web:"https://park4night.com/es",note:"Entra al centro en metro — hay ZTL"},
+      camping:{name:"Camping Villa Rey",web:"http://www.stabilielorusso.it",tel:"+39 011 819 0117",price:"~28€"},fuel:{price:1.73,note:"fai da te"}},
+
+    {id:5,day:"D5",name:"Lago di Como",sub:"Lombardía · Italia",lat:45.8081,lng:9.0852,nights:1,toll:10,optional:true,type:"stop",
+      sights:["Paseo por Como ciudad","Bellagio en ferry","Villa del Balbianello"],
+      parking:{name:"Aree sosta lago di Como",free:false,web:"https://park4night.com/es",note:"Desvío opcional — precioso pero carreteras estrechas"},
+      camping:{name:"Camping Le Vele (Domaso)",web:"https://www.campinglevele.it",tel:"+39 0344 96137",price:"~32€"},fuel:{price:1.74,note:""}},
+
+    {id:6,day:"D5",name:"Milán (Milano)",sub:"Lombardía · Italia",lat:45.4642,lng:9.1900,nights:1,toll:12,optional:false,type:"stop",
+      sights:["Duomo y su terraza","Galería Vittorio Emanuele II","Castello Sforzesco","‘La Última Cena’ (reserva con antelación)"],
+      parking:{name:"Area Sosta Camper Milano (periferia)",free:false,web:"https://park4night.com/es",note:"OJO Area C/B (LEZ). Aparca fuera + metro"},
+      camping:{name:"Camping Village Città di Milano",web:"https://www.campingmilano.it",tel:"+39 02 4820 7017",price:"~34€"},fuel:{price:1.73,note:""}},
+
+    {id:7,day:"D6",name:"Verona",sub:"Véneto · Italia",lat:45.4384,lng:10.9916,nights:1,toll:14,optional:false,type:"stop",
+      sights:["Arena romana","Casa de Julieta","Piazza delle Erbe","Ponte Pietra al atardecer"],
+      parking:{name:"Area Camper Verona (Via Bassone)",free:true,web:"https://park4night.com/es",note:"Área municipal, bus al centro — verifica plazas"},
+      camping:{name:"Camping Castel San Pietro",web:"https://www.campingcastelsanpietro.com",tel:"+39 045 592037",price:"~30€"},fuel:{price:1.72,note:""}},
+
+    {id:8,day:"D7",name:"Venecia (Fusina)",sub:"Véneto · Italia",lat:45.4238,lng:12.2558,nights:2,toll:12,optional:false,type:"stop",
+      sights:["Plaza San Marcos y Basílica","Puente de Rialto","Góndola / vaporetto","Islas Murano y Burano"],
+      parking:{name:"Terminal Fusina (parking camper)",free:false,web:"https://www.terminalfusina.it",note:"Aparca la camper y entra en barco a Venecia — la mejor opción"},
+      camping:{name:"Camping Fusina",web:"https://www.campingfusina.com",tel:"+39 041 547 0055",price:"~30€ · vaporetto a Venecia desde el camping"},fuel:{price:1.74,note:""}},
+
+    {id:9,day:"D9",name:"Bolonia (Bologna)",sub:"Emilia-Romaña · Italia",lat:44.4949,lng:11.3426,nights:1,toll:16,optional:false,type:"stop",
+      sights:["Torres Asinelli y Garisenda","Pórticos (Patrimonio UNESCO)","Piazza Maggiore","Capital gastronómica: tortellini, mortadela"],
+      parking:{name:"Area Sosta Camper Bologna",free:false,web:"https://park4night.com/es",note:"ZTL en el centro — aparca fuera"},
+      camping:{name:"Centro Turistico Città di Bologna",web:"https://www.hotelcamping.com",tel:"+39 051 325016",price:"~30€"},fuel:{price:1.73,note:""}},
+
+    {id:10,day:"D10",name:"Florencia (Firenze)",sub:"Toscana · Italia",lat:43.7696,lng:11.2558,nights:2,toll:8,optional:false,type:"stop",
+      sights:["Duomo y cúpula de Brunelleschi","Galería Uffizi (reserva)","Ponte Vecchio","Piazzale Michelangelo (mirador)"],
+      parking:{name:"Camping/area Michelangelo (con vistas)",free:false,web:"https://park4night.com/es",note:"ZTL estricta — jamás entrar con camper al centro"},
+      camping:{name:"Camping Michelangelo",web:"https://www.ecvacanze.it",tel:"+39 055 681 1977",price:"~38€ · vistas a Florencia, bus al centro"},fuel:{price:1.73,note:""}},
+
+    {id:11,day:"D11",name:"Siena",sub:"Toscana · Italia",lat:43.3188,lng:11.3308,nights:0,toll:6,optional:true,type:"stop",
+      sights:["Piazza del Campo","Catedral gótica","Excursión de día desde Florencia"],
+      parking:{name:"Parcheggio Camper Siena (Fagiolone)",free:false,web:"https://park4night.com/es",note:"Área dedicada, escaleras mecánicas al centro"},
+      camping:{name:"Camping Siena Colleverde",web:"https://www.sienacamping.com",tel:"+39 0577 334080",price:"~30€"},fuel:{price:1.72,note:""}},
+
+    {id:12,day:"D12",name:"Pisa",sub:"Toscana · Italia",lat:43.7228,lng:10.3966,nights:1,toll:6,optional:false,type:"stop",
+      sights:["Torre inclinada y Piazza dei Miracoli","Catedral y Baptisterio","Paseo por el Arno"],
+      parking:{name:"Parcheggio Camper Via Pietrasantina",free:false,web:"https://park4night.com/es",note:"Área de camper A 10 MIN A PIE de la Torre — muy famosa y cómoda"},
+      camping:{name:"Camping Torre Pendente",web:"https://www.campingtorrependente.com",tel:"+39 050 561704",price:"~34€"},fuel:{price:1.73,note:""}},
+
+    {id:13,day:"D13",name:"Cinque Terre (Levanto)",sub:"Liguria · Italia",lat:44.1710,lng:9.6100,nights:1,toll:10,optional:true,type:"stop",
+      sights:["5 pueblos en tren (Cinque Terre Card)","Sendero azul (si abierto)","Monterosso, Vernazza, Manarola"],
+      parking:{name:"Aree camper Levanto",free:false,web:"https://park4night.com/es",note:"Base en Levanto y muévete EN TREN — no se accede en camper a los pueblos"},
+      camping:{name:"Camping Acquadolce (Levanto)",web:"https://www.campingacquadolce.it",tel:"+39 0187 808465",price:"~40€ (alta)"},fuel:{price:1.74,note:""}},
+
+    {id:14,day:"D14",name:"Roma",sub:"Lazio · Italia",lat:41.9028,lng:12.4964,nights:2,toll:18,optional:false,type:"stop",
+      sights:["Coliseo y Foro Romano","Vaticano y Capilla Sixtina","Fontana di Trevi","Panteón y Piazza Navona"],
+      parking:{name:"Area Sosta Camper Roma (periferia)",free:false,web:"https://park4night.com/es",note:"ZTL grande. Aparca fuera + metro/tren de cercanías"},
+      camping:{name:"Camping Village Roma",web:"https://www.ecvacanze.it",tel:"+39 06 6623018",price:"~40€ · lanzadera a metro"},fuel:{price:1.74,note:""}},
+
+    {id:15,day:"D16",name:"Nápoles / Pompeya",sub:"Campania · Italia",lat:40.7497,lng:14.5007,nights:2,toll:16,optional:false,type:"stop",
+      sights:["Ruinas de Pompeya (entrada al lado del camping)","Herculano","Vesubio","Nápoles: pizza y centro histórico"],
+      parking:{name:"Camping Zeus (junto a la entrada Scavi)",free:false,web:"https://park4night.com/es",note:"Aparca en el camping pegado a las ruinas; Nápoles centro en Circumvesuviana"},
+      camping:{name:"Camping Zeus / Camping Spartacus (Pompei)",web:"https://www.campingzeus.it",tel:"+39 081 861 5320",price:"~30€ · a 5 min a pie de Pompeya"},fuel:{price:1.75,note:""}},
+
+    {id:16,day:"D17",name:"Sorrento",sub:"Base para la Costa Amalfitana",lat:40.6263,lng:14.3757,nights:1,toll:4,optional:false,type:"stop",
+      sights:["Base para Positano/Amalfi EN BUS/FERRY","Casco de Sorrento","Ferry a Capri"],
+      parking:{name:"Camping en Sorrento (NO subir la camper a la SS163)",free:false,web:"https://park4night.com/es",note:"La costa Amalfitana está prohibida/imposible para 7,5 m — usa transporte público"},
+      camping:{name:"Camping Santa Fortunata / Nube d'Argento",web:"https://www.santafortunata.eu",tel:"+39 081 807 3579",price:"~40€ (alta)"},fuel:{price:1.76,note:""}},
+
+    {id:17,day:"D18",name:"Civitavecchia",sub:"Puerto de Roma · embarque ferry",lat:42.0924,lng:11.7954,nights:0,toll:20,optional:false,type:"ferry",
+      sights:["Sube desde Nápoles (~4 h)","Llega 2 h antes al puerto","Repostar antes de embarcar"],
+      parking:{name:"Parking del puerto / área previa",free:false,web:"https://www.grimaldi-lines.com/es/",note:"Embarque Grimaldi Lines. Descuento camper ≤ 9 m"},
+      camping:{name:"—",web:"https://www.grimaldi-lines.com/es/",tel:"",price:"Ferry ~520€ camper+camarote"},fuel:{price:1.75,note:"Llena antes del ferry"}},
+
+    {id:18,day:"D19",name:"⛴️ Ferry Civitavecchia → Barcelona",sub:"~20 h de travesía",lat:41.0,lng:6.0,nights:1,toll:0,optional:false,type:"ferry",
+      sights:["Noche a bordo","Puedes quedarte en la camper en algunas salidas (‘camper on board’)","Descansa para el tramo final"],
+      parking:{name:"A bordo — garaje del ferry",free:true,web:"https://www.grimaldi-lines.com/es/",note:"Reserva ‘camper on board’ o camarote"},
+      camping:null,fuel:{price:0,note:""}},
+
+    {id:19,day:"D20",name:"Barcelona → Zaragoza",sub:"Llegada y vuelta a casa · España",lat:41.6488,lng:-0.8891,nights:0,toll:20,optional:false,type:"stop",
+      sights:["Desembarque en Barcelona (mañana)","AP-2 hasta Zaragoza (~3 h, 300 km)","Fin del viaje 🏁"],
+      parking:{name:"Casa",free:true,web:"",note:"Barcelona→Zaragoza por AP-2. Reposta barato en España"},
+      camping:null,fuel:{price:1.52,note:"España barato otra vez"}}
+  ]
+};
+
+/* ============================ ESTADO ============================ */
+const KEY="roadtrip-italia-v1";
+let state=load();
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.stops)return s;}catch(e){}return structuredClone(SEED);}
+function save(){localStorage.setItem(KEY,JSON.stringify(state));}
+
+/* ============================ MAPA ============================ */
+const map=L.map('map',{zoomControl:true}).setView([44,8],5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19, attribution:'© OpenStreetMap'
+}).addTo(map);
+
+let markers=[], routeLayer=null;
+function colorFor(s){return s.type==='ferry'?'#0d6efd':s.optional?'#6b7280':'#c8362f';}
+/* Enlace de BÚSQUEDA de YouTube por ciudad: nunca se rompe, siempre da vídeos actuales,
+   y funciona también para las paradas que añadas tú. Limpia emojis/paréntesis del nombre. */
+function ytLink(name){
+  const clean=(name||'').replace(/[^\p{L}\p{N}\s]/gu,' ').replace(/\s+/g,' ').trim();
+  return 'https://www.youtube.com/results?search_query='+encodeURIComponent('qué ver en '+clean+' viaje');
+}
+function icon(s,idx){
+  const c=colorFor(s);
+  return L.divIcon({className:'',html:`<div style="background:${c};color:#fff;width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800"><span style="transform:rotate(45deg)">${idx}</span></div>`,iconSize:[26,26],iconAnchor:[13,26],popupAnchor:[0,-24]});
+}
+function popupHtml(s){
+  let h=`<h3>${s.name}</h3><div style="color:#6b7280;font-size:.78rem;margin-bottom:.3rem">${s.sub||''} · ${s.day}</div>`;
+  if(s.sights&&s.sights.length)h+=`<b>Ver:</b> ${s.sights.slice(0,3).join(' · ')}<br>`;
+  if(s.parking)h+=`🅿️ ${s.parking.name} ${s.parking.free?'<span style="color:#1e8a4c">(gratis)</span>':''}<br>`;
+  if(s.camping&&s.camping.name&&s.camping.name!=='—'){h+=`🏕️ ${s.camping.name}`;if(s.camping.web)h+=` · <a href="${s.camping.web}" target="_blank">web</a>`;if(s.camping.tel)h+=` · <a href="tel:${s.camping.tel.replace(/\s/g,'')}">${s.camping.tel}</a>`;h+='<br>';}
+  h+=`<div style="margin-top:.4rem"><a href="${ytLink(s.name)}" target="_blank">🎥 Vídeos</a> · <a href="#" onclick="navTo(${s.lat},${s.lng},'${(s.name||'').replace(/'/g,'')}');return false;">🧭 Navegar GPS ↗</a></div>`;
+  return h;
+}
+function drawMarkers(){
+  markers.forEach(m=>map.removeLayer(m));markers=[];
+  visibleStops().forEach((s,i)=>{
+    const m=L.marker([s.lat,s.lng],{icon:icon(s,i+1)}).addTo(map).bindPopup(popupHtml(s));
+    markers.push(m);
+  });
+}
+function visibleStops(){return state.stops.filter(s=>state.showOpt||!s.optional);}
+
+async function drawRoute(){
+  if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
+  const pts=visibleStops().filter(s=>s.type!=='ferry'||s.name.indexOf('Ferry')===-1);
+  // Ruta terrestre = todas menos el tramo marítimo (el punto "Ferry" en medio del mar lo saltamos para OSRM)
+  const land=visibleStops().filter(s=>!/Ferry/.test(s.name));
+  const coords=land.map(s=>`${s.lng},${s.lat}`).join(';');
+  let km=null;
+  try{
+    const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`);
+    const j=await r.json();
+    if(j.routes&&j.routes[0]){
+      const g=j.routes[0].geometry;
+      routeLayer=L.geoJSON(g,{style:{color:'#c8362f',weight:4,opacity:.75,dashArray:null}}).addTo(map);
+      km=j.routes[0].distance/1000;
+    }
+  }catch(e){}
+  if(!routeLayer){ // fallback: líneas rectas
+    const line=land.map(s=>[s.lat,s.lng]);
+    routeLayer=L.polyline(line,{color:'#c8362f',weight:3,opacity:.6,dashArray:'6 6'}).addTo(map);
+    km=haversineTotal(land);
+  }
+  // añade el tramo de ferry como línea azul discontinua
+  const ferryLeg=visibleStops();
+  for(let i=0;i<ferryLeg.length-1;i++){
+    if(/Ferry/.test(ferryLeg[i].name)||/Ferry/.test(ferryLeg[i+1].name)){
+      L.polyline([[ferryLeg[i].lat,ferryLeg[i].lng],[ferryLeg[i+1].lat,ferryLeg[i+1].lng]],{color:'#0d6efd',weight:3,dashArray:'2 8',opacity:.8}).addTo(routeLayer);
+    }
+  }
+  updateSummary(km);
+}
+function haversineTotal(arr){let t=0;for(let i=0;i<arr.length-1;i++){t+=hav(arr[i],arr[i+1]);}return t;}
+function hav(a,b){const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180;const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+
+/* ============================ RESUMEN ============================ */
+let lastKm=null;
+function updateSummary(km){
+  if(km!=null)lastKm=km;
+  const K=lastKm||haversineTotal(visibleStops().filter(s=>!/Ferry/.test(s.name)));
+  document.getElementById('sKm').textContent=Math.round(K).toLocaleString('es-ES')+' km';
+  const peajes=state.peajesOn?visibleStops().reduce((a,s)=>a+(+s.toll||0),0)+(+state.ferry||0):0;
+  document.getElementById('sPeaje').textContent=state.peajesOn?peajes.toLocaleString('es-ES')+' €':'—';
+  const fuel=K/100*(+state.cons||12)*(+state.price||1.75);
+  document.getElementById('sFuel').textContent=Math.round(fuel).toLocaleString('es-ES')+' €';
+  const days=new Set(state.stops.flatMap(s=>String(s.day).match(/\d+/g)||[]));
+  document.getElementById('sDias').textContent=20;
+}
+
+/* ============================ RENDER LISTA ============================ */
+function render(){
+  const cont=document.getElementById('stops');cont.innerHTML='';
+  visibleStops().forEach((s,i)=>{
+    const el=document.createElement('div');
+    el.className='stop'+(s.type==='ferry'?' ferry':'')+(s.optional?' optional':'');
+    el.innerHTML=`
+      <div class="stop-h">
+        <span class="daychip">${s.day}</span>
+        <div class="nm">${i+1}. ${s.name}${s.optional?' <span class="pill pay">opcional</span>':''}<small>${s.sub||''}${s.nights?` · ${s.nights} noche${s.nights>1?'s':''}`:''}</small></div>
+        <span class="km">${s.toll&&state.peajesOn?('🛣️'+s.toll+'€'):''}</span>
+      </div>
+      <div class="stop-b" id="b${s.id}">
+        ${s.sights&&s.sights.length?`<div class="lbl">Qué ver</div><ul>${s.sights.map(x=>`<li>${x}</li>`).join('')}</ul>`:''}
+        ${s.parking?`<div class="lbl pk">🅿️ Aparcamiento</div><div>${s.parking.name} ${s.parking.free?'<span class="pill free">gratis pernocta</span>':'<span class="pill pay">de pago</span>'}<br><span class="muted">${s.parking.note||''}</span>${s.parking.web?` · <a href="${s.parking.web}" target="_blank">web/mapa ↗</a>`:''}</div>`:''}
+        ${s.camping&&s.camping.name&&s.camping.name!=='—'?`<div class="lbl cp">🏕️ Camping</div><div>${s.camping.name}${s.camping.price?` · <b>${s.camping.price}</b>`:''}<br>${s.camping.web?`<a href="${s.camping.web}" target="_blank">${s.camping.web.replace(/^https?:\/\//,'').replace(/\/$/,'')} ↗</a>`:''}${s.camping.tel?` · <a href="tel:${s.camping.tel.replace(/\s/g,'')}">📞 ${s.camping.tel}</a>`:''}</div>`:''}
+        ${s.fuel&&s.fuel.price?`<div class="lbl fu">⛽ Combustible zona</div><div><b>${(+s.fuel.price).toFixed(2)} €/L</b> ${s.fuel.note?`· ${s.fuel.note}`:''}</div>`:''}
+        <div class="acts">
+          <button class="btn p" onclick="navTo(${s.lat},${s.lng},'${(s.name||'').replace(/'/g,'')}')">🧭 Navegar (GPS)</button>
+          <a class="btn" href="${ytLink(s.name)}" target="_blank" rel="noopener">🎥 Vídeos</a>
+          <button class="btn" onclick="focusStop(${s.id})">📍 Ver en mapa</button>
+          <button class="btn" onclick="editStop(${s.id})">✏️ Editar</button>
+          <button class="btn" onclick="moveStop(${s.id},-1)">↑</button>
+          <button class="btn" onclick="moveStop(${s.id},1)">↓</button>
+          <button class="btn d" onclick="delStop(${s.id})">🗑️</button>
+        </div>
+      </div>`;
+    el.querySelector('.stop-h').onclick=()=>document.getElementById('b'+s.id).classList.toggle('open');
+    cont.appendChild(el);
+  });
+  renderFuel();
+  updateSummary();
+}
+function renderFuel(){
+  const tb=document.getElementById('fuelBody');tb.innerHTML='';
+  state.fuelRefs.forEach((f,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${f.zone}</td><td><input type="number" step="0.01" value="${f.price}" onchange="state.fuelRefs[${i}].price=+this.value;save()"></td><td style="color:#6b7280;font-size:.72rem">${f.note||''}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+/* ============================ ACCIONES ============================ */
+window.focusStop=id=>{const s=state.stops.find(x=>x.id===id);map.setView([s.lat,s.lng],10);const idx=visibleStops().indexOf(s);if(markers[idx])markers[idx].openPopup();};
+
+/* Abre el GPS REAL del móvil (Apple Maps en iOS / Google Maps en el resto)
+   con navegación por voz desde tu ubicación hasta la parada. */
+window.navTo=(lat,lng,name)=>{
+  const isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(/Mac/.test(navigator.platform)&&navigator.maxTouchPoints>1);
+  const url=isIOS
+    ? `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`
+    : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+  window.open(url,'_blank');
+};
+
+/* GPS en vivo dentro del mapa: punto azul que te sigue en tiempo real. */
+let gpsWatch=null,gpsMarker=null,gpsCircle=null,gpsFollow=false;
+window.toggleGPS=()=>{
+  const btn=document.getElementById('btnLoc');
+  if(gpsWatch!=null){
+    navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;gpsFollow=false;
+    if(gpsMarker){map.removeLayer(gpsMarker);gpsMarker=null;}
+    if(gpsCircle){map.removeLayer(gpsCircle);gpsCircle=null;}
+    btn.classList.remove('g');btn.textContent='📍 GPS';return;
+  }
+  if(!navigator.geolocation){alert('Tu navegador no soporta geolocalización.');return;}
+  btn.classList.add('g');btn.textContent='🛑 GPS';gpsFollow=true;
+  gpsWatch=navigator.geolocation.watchPosition(p=>{
+    const la=p.coords.latitude,ln=p.coords.longitude,ac=p.coords.accuracy;const ll=[la,ln];
+    if(!gpsMarker){
+      gpsMarker=L.marker(ll,{zIndexOffset:1000,icon:L.divIcon({className:'',html:'<div style="width:18px;height:18px;background:#0d6efd;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px rgba(13,110,253,.35),0 1px 5px rgba(0,0,0,.5)"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map).bindPopup('Estás aquí');
+      gpsCircle=L.circle(ll,{radius:ac,color:'#0d6efd',fillColor:'#0d6efd',fillOpacity:.08,weight:1}).addTo(map);
+    }else{gpsMarker.setLatLng(ll);gpsCircle.setLatLng(ll).setRadius(ac);}
+    if(gpsFollow)map.setView(ll,Math.max(map.getZoom(),13),{animate:true});
+  },err=>{alert('No se pudo obtener tu ubicación: '+err.message+'\\n(Recuerda permitir el GPS y usar HTTPS).');
+    btn.classList.remove('g');btn.textContent='📍 GPS';gpsWatch=null;
+  },{enableHighAccuracy:true,maximumAge:2000,timeout:12000});
+};
+/* Si arrastras el mapa, deja de seguirte para que puedas mirar alrededor. Toca 📍 GPS otra vez para re-centrar. */
+map.on('dragstart',()=>{if(gpsWatch!=null)gpsFollow=false;});
+window.moveStop=(id,dir)=>{const i=state.stops.findIndex(x=>x.id===id);const j=i+dir;if(j<0||j>=state.stops.length)return;[state.stops[i],state.stops[j]]=[state.stops[j],state.stops[i]];save();refresh();};
+window.delStop=id=>{if(!confirm('¿Eliminar esta parada?'))return;state.stops=state.stops.filter(x=>x.id!==id);save();refresh();};
+
+let editing=null;
+window.editStop=id=>{
+  editing=id;const s=state.stops.find(x=>x.id===id);
+  V('mName',s.name);V('mSub',s.sub);V('mDay',s.day);V('mNights',s.nights);V('mLat',s.lat);V('mLng',s.lng);
+  V('mType',s.type);V('mToll',s.toll);document.getElementById('mOptional').checked=!!s.optional;
+  V('mSights',(s.sights||[]).join('\n'));
+  V('mPkName',s.parking?.name||'');V('mPkFree',String(s.parking?.free??false));V('mPkWeb',s.parking?.web||'');V('mPkNote',s.parking?.note||'');
+  V('mCpName',s.camping?.name||'');V('mCpWeb',s.camping?.web||'');V('mCpTel',s.camping?.tel||'');V('mCpPrice',s.camping?.price||'');
+  V('mFuel',s.fuel?.price||'');V('mFuelNote',s.fuel?.note||'');
+  document.getElementById('modal').style.display='flex';
+};
+function V(id,val){const e=document.getElementById(id);if(e)e.value=val;}
+function G(id){return document.getElementById(id).value;}
+
+document.getElementById('mSave').onclick=()=>{
+  let s=state.stops.find(x=>x.id===editing);
+  if(!s){s={id:Date.now()};state.stops.push(s);}
+  s.name=G('mName');s.sub=G('mSub');s.day=G('mDay');s.nights=+G('mNights')||0;
+  s.lat=+G('mLat');s.lng=+G('mLng');s.type=G('mType');s.toll=+G('mToll')||0;
+  s.optional=document.getElementById('mOptional').checked;
+  s.sights=G('mSights').split('\n').map(x=>x.trim()).filter(Boolean);
+  s.parking={name:G('mPkName'),free:G('mPkFree')==='true',web:G('mPkWeb'),note:G('mPkNote')};
+  s.camping={name:G('mCpName'),web:G('mCpWeb'),tel:G('mCpTel'),price:G('mCpPrice')};
+  s.fuel={price:+G('mFuel')||0,note:G('mFuelNote')};
+  save();document.getElementById('modal').style.display='none';refresh();
+};
+document.getElementById('mCancel').onclick=()=>document.getElementById('modal').style.display='none';
+document.getElementById('btnAdd').onclick=()=>{
+  const c=map.getCenter();editing=null;
+  ['mName','mSub','mDay','mSights','mPkName','mPkWeb','mPkNote','mCpName','mCpWeb','mCpTel','mCpPrice','mFuelNote'].forEach(i=>V(i,''));
+  V('mNights',0);V('mToll',0);V('mFuel','');V('mLat',c.lat.toFixed(4));V('mLng',c.lng.toFixed(4));V('mType','stop');V('mPkFree','true');
+  document.getElementById('mOptional').checked=false;
+  document.getElementById('modal').style.display='flex';
+};
+document.getElementById('btnAddFuel').onclick=()=>{state.fuelRefs.push({zone:"Nueva referencia",price:1.70,note:""});save();renderFuel();};
+
+/* ============================ CONFIG ============================ */
+function bindCfg(){
+  const map2={cCons:'cons',cPrice:'price',cFerry:'ferry'};
+  Object.entries(map2).forEach(([id,key])=>{const e=document.getElementById(id);e.value=state[key];e.oninput=()=>{state[key]=+e.value;save();updateSummary();};});
+  const t1=document.getElementById('tPeajes');t1.checked=state.peajesOn;t1.onchange=()=>{state.peajesOn=t1.checked;save();render();};
+  const t2=document.getElementById('tShowFuel');t2.checked=state.showFuel;t2.onchange=()=>{state.showFuel=t2.checked;save();};
+  const t3=document.getElementById('tOpt');t3.checked=state.showOpt;t3.onchange=()=>{state.showOpt=t3.checked;save();refresh();};
+}
+
+/* ============================ TABS ============================ */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.tabc').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');document.getElementById('tab-'+t.dataset.tab).classList.add('on');
+});
+
+/* ============================ TOOLBAR ============================ */
+document.getElementById('btnFit').onclick=()=>{const g=L.featureGroup(markers);if(markers.length)map.fitBounds(g.getBounds().pad(.15));};
+document.getElementById('btnLoc').onclick=()=>toggleGPS();
+document.getElementById('btnReset').onclick=()=>{if(confirm('¿Restaurar el viaje original? Perderás tus cambios.')){state=structuredClone(SEED);save();refresh();bindCfg();}};
+document.getElementById('btnExport').onclick=()=>{
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='roadtrip-italia.json';a.click();
+};
+document.getElementById('btnImport').onclick=()=>document.getElementById('fileImport').click();
+document.getElementById('fileImport').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{state=JSON.parse(r.result);save();refresh();bindCfg();alert('Viaje importado ✔');}catch(err){alert('Archivo no válido');}};
+  r.readAsText(f);
+};
+
+/* ============================ INIT ============================ */
+function refresh(){drawMarkers();drawRoute();render();}
+refresh();bindCfg();
+setTimeout(()=>{const g=L.featureGroup(markers);if(markers.length)map.fitBounds(g.getBounds().pad(.15));},400);
+</script>
+</body>
+</html>
