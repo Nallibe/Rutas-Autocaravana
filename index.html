@@ -534,6 +534,7 @@ function render(){
           <a class="btn" href="${ytLink(s.name)}" target="_blank" rel="noopener">🎥 Vídeos</a>
           <button class="btn" onclick="focusStop(${s.id})">📍 Ver en mapa</button>
           <button class="btn" onclick="editStop(${s.id})">✏️ Editar</button>
+          <button class="btn g" onclick="insertAfter(${s.id})">➕ Insertar aquí</button>
           <button class="btn" onclick="moveStop(${s.id},-1)">↑</button>
           <button class="btn" onclick="moveStop(${s.id},1)">↓</button>
           <button class="btn d" onclick="delStop(${s.id})">🗑️</button>
@@ -600,9 +601,22 @@ map.on('dragstart',()=>{if(gpsWatch!=null)gpsFollow=false;});
 window.moveStop=(id,dir)=>{const i=state.stops.findIndex(x=>x.id===id);const j=i+dir;if(j<0||j>=state.stops.length)return;[state.stops[i],state.stops[j]]=[state.stops[j],state.stops[i]];save();refresh();};
 window.delStop=id=>{if(!confirm('¿Eliminar esta parada?'))return;state.stops=state.stops.filter(x=>x.id!==id);save();refresh();};
 
-let editing=null;
+let editing=null,insertPos=null;
+/* Insertar una parada NUEVA justo después de la parada 'id' (estilo Google Maps).
+   La coloca de inicio en el punto medio entre esa parada y la siguiente. */
+window.insertAfter=id=>{
+  const i=state.stops.findIndex(x=>x.id===id);
+  insertPos=i;editing=null;
+  const a=state.stops[i],b=state.stops[i+1];
+  const lat=b?((a.lat+b.lat)/2):a.lat, lng=b?((a.lng+b.lng)/2):a.lng;
+  ['mName','mSub','mSights','mPkName','mPkWeb','mPkNote','mCpName','mCpWeb','mCpTel','mCpPrice','mFuelNote'].forEach(x=>V(x,''));
+  V('mDay',a.day);V('mNights',0);V('mToll',0);V('mFuel','');V('mType','stop');V('mPkFree','true');
+  V('mLat',(+lat).toFixed(4));V('mLng',(+lng).toFixed(4));
+  document.getElementById('mOptional').checked=false;
+  document.getElementById('modal').style.display='flex';
+};
 window.editStop=id=>{
-  editing=id;const s=state.stops.find(x=>x.id===id);
+  editing=id;insertPos=null;const s=state.stops.find(x=>x.id===id);
   V('mName',s.name);V('mSub',s.sub);V('mDay',s.day);V('mNights',s.nights);V('mLat',s.lat);V('mLng',s.lng);
   V('mType',s.type);V('mToll',s.toll);document.getElementById('mOptional').checked=!!s.optional;
   V('mSights',(s.sights||[]).join('\n'));
@@ -616,7 +630,7 @@ function G(id){return document.getElementById(id).value;}
 
 document.getElementById('mSave').onclick=()=>{
   let s=state.stops.find(x=>x.id===editing);
-  if(!s){s={id:Date.now()};state.stops.push(s);}
+  if(!s){s={id:Date.now()};if(insertPos!=null){state.stops.splice(insertPos+1,0,s);}else{state.stops.push(s);}}
   s.name=G('mName');s.sub=G('mSub');s.day=G('mDay');s.nights=+G('mNights')||0;
   s.lat=+G('mLat');s.lng=+G('mLng');s.type=G('mType');s.toll=+G('mToll')||0;
   s.optional=document.getElementById('mOptional').checked;
@@ -624,11 +638,11 @@ document.getElementById('mSave').onclick=()=>{
   s.parking={name:G('mPkName'),free:G('mPkFree')==='true',web:G('mPkWeb'),note:G('mPkNote')};
   s.camping={name:G('mCpName'),web:G('mCpWeb'),tel:G('mCpTel'),price:G('mCpPrice')};
   s.fuel={price:+G('mFuel')||0,note:G('mFuelNote')};
-  save();document.getElementById('modal').style.display='none';refresh();
+  save();insertPos=null;document.getElementById('modal').style.display='none';refresh();
 };
-document.getElementById('mCancel').onclick=()=>document.getElementById('modal').style.display='none';
+document.getElementById('mCancel').onclick=()=>{insertPos=null;document.getElementById('modal').style.display='none';};
 document.getElementById('btnAdd').onclick=()=>{
-  const c=map.getCenter();editing=null;
+  const c=map.getCenter();editing=null;insertPos=null;
   ['mName','mSub','mDay','mSights','mPkName','mPkWeb','mPkNote','mCpName','mCpWeb','mCpTel','mCpPrice','mFuelNote'].forEach(i=>V(i,''));
   V('mNights',0);V('mToll',0);V('mFuel','');V('mLat',c.lat.toFixed(4));V('mLng',c.lng.toFixed(4));V('mType','stop');V('mPkFree','true');
   document.getElementById('mOptional').checked=false;
