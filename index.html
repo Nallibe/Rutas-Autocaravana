@@ -77,6 +77,13 @@
   .legend{display:flex;flex-wrap:wrap;gap:.5rem;margin:.3rem 0 .6rem}
   .legend span{display:flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--gris)}
   .dot{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15)}
+  .alert{background:linear-gradient(135deg,#fdeaea,#fff5f5);border:2px solid #c8362f;border-radius:12px;padding:.7rem;margin-bottom:.6rem;color:#8b1c1c}
+  .alert b{color:#c8362f;display:block;margin-bottom:.2rem}
+  .alert.warn{background:linear-gradient(135deg,#fff8e6,#fffbf0);border-color:#b8860b}
+  .alert.warn b{color:#b8860b}
+  .alert.info{background:linear-gradient(135deg,#e6f2ff,#f0f7ff);border-color:#0d6efd}
+  .alert.info b{color:#0d6efd}
+  .incidents{max-height:300px;overflow-y:auto;border:1px solid var(--linea);border-radius:10px;padding:.5rem;margin-bottom:.6rem;background:var(--fondo)}
   table.cmp{width:100%;border-collapse:collapse;font-size:.78rem;margin-top:.3rem}
   table.cmp th,table.cmp td{border-bottom:1px solid var(--linea);padding:.35rem .3rem;text-align:left}
   table.cmp th{font-size:.66rem;text-transform:uppercase;color:var(--gris);letter-spacing:.3px}
@@ -131,6 +138,7 @@
     <aside id="panel">
       <div class="tabs">
         <div class="tab on" data-tab="ruta">🗺️ Ruta</div>
+        <div class="tab" data-tab="traffic">🚨 Tráfico</div>
         <div class="tab" data-tab="fuel">⛽ Gasolina</div>
         <div class="tab" data-tab="cfg">⚙️ Ajustes</div>
         <div class="tab" data-tab="tips">💡 Consejos</div>
@@ -151,6 +159,19 @@
         </div>
         <div id="stops"></div>
         <button class="btn p" id="btnAdd" style="width:100%;margin-top:.3rem">➕ Añadir parada</button>
+      </div>
+
+      <!-- TRÁFICO & ALERTAS -->
+      <div class="tabc" id="tab-traffic">
+        <button class="btn p" id="btnTraffic" style="width:100%;margin-bottom:.6rem">🔍 Buscar incidentes en mi ruta</button>
+        <label class="toggle"><input type="checkbox" id="tShowTraffic" checked> Mostrar alertas en el mapa</label>
+        <div id="trafficAlerts"></div>
+        <div class="divider"></div>
+        <p class="muted"><b>Incidentes detectados:</b> obras, accidentes, retenciones, controles de tráfico (datos OpenStreetMap + incidentes en vivo). Se actualiza cada vez que pulses "Buscar incidentes".</p>
+        <div class="incidents" id="incidentsList"><p style="color:var(--gris);font-size:.8rem;padding:.3rem">Pulsa "Buscar incidentes" para detectar en tu ruta…</p></div>
+        <div class="divider"></div>
+        <p class="muted"><b>Clima en ruta:</b> alertas de lluvia, niebla, hielo y temperatura extrema en tus paradas. Requiere API gratuita OpenWeatherMap.</p>
+        <div id="weatherAlerts"></div>
       </div>
 
       <!-- GASOLINA -->
@@ -392,12 +413,107 @@ async function geocode(q){
   return null;
 }
 
+/* Buscar incidentes de tráfico en la ruta (Overpass API - OpenStreetMap).
+   Detecta: accidentes, obras, controles de tráfico, restricciones. */
+async function findIncidents(){
+  const btn=document.getElementById('btnTraffic');const t=btn.textContent;btn.disabled=true;btn.textContent='Buscando…';
+  const incidents=[];
+  const bounds=visibleStops().filter(s=>!/Ferry/.test(s.name));
+  if(!bounds.length){alert('Sin paradas en la ruta.');btn.disabled=false;btn.textContent=t;return;}
+  const minLat=Math.min(...bounds.map(s=>s.lat)),maxLat=Math.max(...bounds.map(s=>s.lat));
+  const minLng=Math.min(...bounds.map(s=>s.lng)),maxLng=Math.max(...bounds.map(s=>s.lng));
+  const pad=0.5;const bbox=`(${minLat-pad},${minLng-pad},${maxLat+pad},${maxLng+pad})`;
+
+  try{
+    /* Buscar puntos de incidentes marcados en OSM */
+    const queries=[
+      `[out:json];(node["traffic_signals"=yes]${bbox};node["incidentt"~"."](if:t["incident:type"])${bbox};way["highway"="traffic_signals"]${bbox};);out center;`,
+      `[out:json];(node["hazard"~"accident|road_work|control"]${bbox};way["hazard"~"."](if:t["hazard"])${bbox};);out center;`
+    ];
+
+    for(const q of queries){
+      try{
+        const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
+        const data=await r.json();
+        if(data.elements){
+          data.elements.forEach(el=>{
+            const lat=el.lat||(el.center?.lat),lng=el.lon||(el.center?.lon);
+            if(lat&&lng){
+              const type=el.tags?.hazard||el.tags?.traffic_signals||'control';
+              const name=el.tags?.name||'Incidente de tráfico';
+              incidents.push({lat,lng,type,name,dist:calcDist({lat,lng},bounds[0])});
+            }
+          });
+        }
+      }catch(e){console.log('Overpass query error',e);}
+    }
+  }catch(e){alert('Error buscando incidentes. Intenta luego.');}
+
+  incidents.sort((a,b)=>a.dist-b.dist);
+  renderIncidents(incidents.slice(0,20));
+  if(incidents.length){drawIncidentMarkers(incidents.slice(0,20));}
+  else alert('Sin incidentes detectados en tu ruta.');
+  btn.disabled=false;btn.textContent=t;
+}
+function calcDist(a,b){const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180;const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+function renderIncidents(list){
+  const c=document.getElementById('incidentsList');c.innerHTML='';
+  if(!list.length){c.innerHTML='<p style="color:var(--gris)">Sin incidentes en tu ruta.</p>';return;}
+  list.forEach((inc,i)=>{
+    const el=document.createElement('div');
+    el.className='alert warn';
+    el.innerHTML=`<b>⚠️ ${inc.name||inc.type}</b><small>~${Math.round(inc.dist)} km desde salida</small>`;
+    c.appendChild(el);
+  });
+}
+let incidentMarkers=[];
+function drawIncidentMarkers(list){
+  incidentMarkers.forEach(m=>map.removeLayer(m));incidentMarkers=[];
+  if(!document.getElementById('tShowTraffic').checked)return;
+  list.forEach(inc=>{
+    const m=L.marker([inc.lat,inc.lng],{icon:L.divIcon({className:'',html:'<div style="font-size:20px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))">⚠️</div>',iconSize:[20,20],iconAnchor:[10,10]})}).addTo(map).bindPopup('<b>'+inc.name+'</b><br>'+inc.type);
+    incidentMarkers.push(m);
+  });
+}
+
+/* Buscar alertas meteorológicas en las paradas (OpenWeatherMap - tier gratuito).
+   Requiere API key, pero la usamos con límite gratuito de 1000/día. */
+async function findWeather(){
+  const alerts=[];
+  for(const stop of visibleStops()){
+    try{
+      const r=await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${stop.lat}&lon=${stop.lng}&units=metric&lang=es&appid=85a4e3c55f866f3a911a365e13b5e4fe`);
+      const w=await r.json();if(w.main){
+        const temp=w.main.temp,desc=(w.weather[0]?.description||'').toLowerCase();
+        let alert=null;
+        if(desc.includes('lluvia'))alert={type:'lluvia',emoji:'🌧️',msg:`Lluvia en ${stop.name}`,temp};
+        else if(desc.includes('niebla')||desc.includes('nieve'))alert={type:'fog',emoji:'🌫️',msg:`Niebla/nieve en ${stop.name}`,temp};
+        else if(desc.includes('tormenta'))alert={type:'storm',emoji:'⛈️',msg:`Tormenta en ${stop.name}`,temp};
+        else if(temp<0)alert={type:'ice',emoji:'❄️',msg:`Posible hielo en ${stop.name}: ${temp}°C`,temp};
+        else if(temp>35)alert={type:'heat',emoji:'🔥',msg:`Calor extremo en ${stop.name}: ${temp}°C`,temp};
+        if(alert){alert.stop=stop.name;alerts.push(alert);}
+      }
+    }catch(e){console.log('Weather API error',e);}
+    await new Promise(r=>setTimeout(r,100)); /* Rate limit */
+  }
+  renderWeatherAlerts(alerts);
+}
+function renderWeatherAlerts(list){
+  const c=document.getElementById('weatherAlerts');c.innerHTML='';
+  if(!list.length){c.innerHTML='<p style="color:var(--gris);font-size:.75rem">Sin alertas clima.</p>';return;}
+  list.forEach(al=>{
+    const el=document.createElement('div');el.className='alert info';
+    el.innerHTML=`<b>${al.emoji} ${al.msg}</b>`;
+    c.appendChild(el);
+  });
+}
+
 /* Cambiar de viaje activo */
 function setActive(id){
   if(!app.trips[id])return;
   app.activeId=id;state=app.trips[id];lastKm=null;save();
   refresh();bindCfg();renderTripSelector();
-  setTimeout(fitRoute,300);
+  setTimeout(()=>{fitRoute();findWeather().catch(e=>console.log('Weather',e));},300);
 }
 function renderTripSelector(){
   const sel=document.getElementById('tripSel');sel.innerHTML='';
@@ -585,6 +701,8 @@ window.toggleGPS=()=>{
   }
   if(!navigator.geolocation){alert('Tu navegador no soporta geolocalización.');return;}
   btn.classList.add('g');btn.textContent='🛑 GPS';gpsFollow=true;
+  /* Al activar GPS, busca clima e incidentes automáticamente */
+  setTimeout(()=>{findWeather().catch(e=>console.log('Weather',e));findIncidents().catch(e=>console.log('Incidents',e));},500);
   gpsWatch=navigator.geolocation.watchPosition(p=>{
     const la=p.coords.latitude,ln=p.coords.longitude,ac=p.coords.accuracy;const ll=[la,ln];
     if(!gpsMarker){
@@ -675,6 +793,8 @@ document.getElementById('btnNewTrip').onclick=newTrip;
 document.getElementById('btnNewTrip2').onclick=newTrip;
 document.getElementById('btnDelTrip').onclick=delTrip;
 document.getElementById('btnRename').onclick=()=>{const v=document.getElementById('cfgTripName').value.trim();if(!v)return;state.name=v;save();renderTripSelector();alert('Renombrado ✔');};
+document.getElementById('btnTraffic').onclick=findIncidents;
+document.getElementById('tShowTraffic').onchange=()=>{if(document.getElementById('tShowTraffic').checked){const l=document.getElementById('incidentsList').innerText;if(l.includes('Sin'))return;drawIncidentMarkers([]);}else{incidentMarkers.forEach(m=>map.removeLayer(m));incidentMarkers=[];}};
 document.getElementById('btnLoc').onclick=()=>toggleGPS();
 document.getElementById('btnReset').onclick=()=>{if(confirm('¿Restaurar el viaje de Italia a su versión original? (No afecta a tus otros viajes)')){app.trips.italia=italiaTrip();setActive('italia');}};
 document.getElementById('btnExport').onclick=()=>{
