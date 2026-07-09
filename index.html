@@ -98,9 +98,9 @@
     #map{position:absolute;inset:0;height:auto}
     #panel{position:absolute;left:0;right:0;bottom:0;width:100%;max-width:100%;border-left:none;border-top:none;border-radius:18px 18px 0 0;box-shadow:0 -6px 20px rgba(0,0,0,.18);height:44vh;height:calc(var(--vh,1vh) * 44);max-height:88vh;min-height:160px;z-index:400;transition:height .28s ease}
     #panel.expanded{height:88vh;height:calc(var(--vh,1vh) * 88)}
-    #panelHandle{display:flex;flex:0 0 auto;align-items:center;justify-content:center;padding:.4rem 0;cursor:grab;touch-action:none;position:relative;background:#fff;border-radius:18px 18px 0 0}
+    #panelHandle{display:flex;flex:0 0 auto;align-items:center;justify-content:center;min-height:36px;padding:.4rem 0;cursor:grab;touch-action:none;position:relative;background:#fff;border-radius:18px 18px 0 0}
     #panelHandle .bar{width:40px;height:5px;border-radius:3px;background:var(--linea)}
-    #panelToggle{display:flex;position:absolute;right:.5rem;top:.35rem;background:#fff;border:1px solid var(--linea);border-radius:50%;width:30px;height:30px;align-items:center;justify-content:center;font-size:1rem;cursor:pointer;box-shadow:var(--sombra)}
+    #panelToggle{display:flex;position:absolute;right:.5rem;top:50%;transform:translateY(-50%);background:#fff;border:1px solid var(--linea);border-radius:50%;width:30px;height:30px;align-items:center;justify-content:center;font-size:1rem;cursor:pointer;box-shadow:var(--sombra);z-index:20}
   }
   /* ===== Portada "Viajes del Sunny" ===== */
   #cover{position:fixed;inset:0;z-index:5000;background:#5b7cf0 url('sunny.png') center bottom/contain no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:6vh 1rem 0;text-align:center;transition:opacity .5s ease}
@@ -162,8 +162,8 @@
     <aside id="panel">
       <div id="panelHandle" onmousedown="panelDragStart(event)" ontouchstart="panelDragStart(event)" ontouchmove="panelDragMove(event)" ontouchend="panelDragEnd(event)">
         <div class="bar"></div>
+        <button id="panelToggle" type="button" onclick="togglePanelExpand()">⌃</button>
       </div>
-      <button id="panelToggle" type="button" onclick="togglePanelExpand()">⌃</button>
       <div class="tabs">
         <div class="tab on" data-tab="ruta">🗺️ Ruta</div>
         <div class="tab" data-tab="traffic">🚨 Tráfico</div>
@@ -935,10 +935,18 @@ async function fetchRouteAlternatives(start,end){
   return[];
 }
 
+/* Fetch con límite de tiempo real (AbortController): si la API pública tarda
+   demasiado o está saturada, abortamos en vez de dejar la UI colgada. */
+function fetchTimeout(url,ms,opts){
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),ms);
+  return fetch(url,{...opts,signal:ctrl.signal}).finally(()=>clearTimeout(timer));
+}
+
 /* Geocodificación inversa: coordenadas -> "Ciudad · Provincia · País" */
 async function reverseGeocode(lat,lng){
   try{
-    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10`);
+    const r=await fetchTimeout(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10`,6000);
     const j=await r.json();
     if(j&&j.address){
       const a=j.address;
@@ -948,57 +956,54 @@ async function reverseGeocode(lat,lng){
   return null;
 }
 
-/* Auto-rellenar parada con APIs (POIs, gasolineras, aparcamientos, camping cercano) */
+/* Auto-rellenar parada con APIs (POIs, gasolineras, aparcamientos, camping cercano).
+   IMPORTANTE: Overpass público es MUY lento con consultas "way" y con radios grandes
+   (una sola consulta con "way" y 6km de radio puede tardar >10s, y 4 consultas
+   seguidas pueden superar el minuto). Por eso: UNA sola consulta combinada,
+   solo "node" (sin "way", ~10x más rápido) y radio reducido a 3 km. */
 async function autoFillStop(lat,lng){
   const stop={sights:[],parking:{name:'',free:true,web:'',note:''},camping:{name:'',web:'',tel:'',price:''},fuel:{price:0,note:''}};
-  const rad=0.06; // ~6 km de radio de búsqueda
+  const rad=0.03; // ~3 km
   const bbox=`(${lat-rad},${lng-rad},${lat+rad},${lng+rad})`;
+  const q=`[out:json][timeout:8];(node["tourism"="attraction"]${bbox};node["tourism"="viewpoint"]${bbox};node["amenity"="fuel"]${bbox};node["tourism"="camp_site"]${bbox};node["tourism"="caravan_site"]${bbox};node["amenity"="parking"]${bbox};);out;`;
 
-  async function overpass(q){
-    try{
-      const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q));
-      const data=await r.json();
-      return data.elements||[];
-    }catch(e){return[];}
-  }
-  function nearest(elements){
+  function nearestOfType(elements,pred){
     let best=null,bd=Infinity;
     elements.forEach(el=>{
-      const elat=el.lat??el.center?.lat, elng=el.lon??el.center?.lon;
-      if(elat==null)return;
-      const d=hav({lat,lng},{lat:elat,lng:elng});
+      if(el.lat==null||!pred(el.tags||{}))return;
+      const d=hav({lat,lng},{lat:el.lat,lng:el.lon});
       if(d<bd){bd=d;best=el;}
     });
     return best;
   }
 
   try{
-    const attractionEls=await overpass(`[out:json][timeout:15];(node["tourism"="attraction"]${bbox};node["tourism"="viewpoint"]${bbox};way["tourism"="attraction"]${bbox};);out center;`);
-    const best=nearest(attractionEls);
-    if(best)stop.sights.push(best.tags?.name||'Punto de interés cercano');
+    const r=await fetchTimeout('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q),8000);
+    const data=await r.json();
+    const els=data.elements||[];
 
-    const fuelEls=await overpass(`[out:json][timeout:15];(node["amenity"="fuel"]${bbox};way["amenity"="fuel"]${bbox};);out center;`);
-    const fbest=nearest(fuelEls);
-    if(fbest)stop.fuel.note=fbest.tags?.name||fbest.tags?.brand||'Gasolinera cercana';
+    const attraction=nearestOfType(els,t=>t.tourism==='attraction'||t.tourism==='viewpoint');
+    if(attraction)stop.sights.push(attraction.tags?.name||'Punto de interés cercano');
+
+    const fuel=nearestOfType(els,t=>t.amenity==='fuel');
+    if(fuel)stop.fuel.note=fuel.tags?.name||fuel.tags?.brand||'Gasolinera cercana';
 
     /* OJO: el tag correcto de OSM es tourism=camp_site (con guion bajo), no "campsite" */
-    const campEls=await overpass(`[out:json][timeout:15];(node["tourism"="camp_site"]${bbox};way["tourism"="camp_site"]${bbox};node["tourism"="caravan_site"]${bbox};way["tourism"="caravan_site"]${bbox};);out center;`);
-    const cbest=nearest(campEls);
-    if(cbest){
-      stop.camping.name=cbest.tags?.name||'Camping cercano';
-      stop.camping.web=cbest.tags?.website||cbest.tags?.['contact:website']||'';
-      stop.camping.tel=cbest.tags?.phone||cbest.tags?.['contact:phone']||'';
+    const camp=nearestOfType(els,t=>t.tourism==='camp_site'||t.tourism==='caravan_site');
+    if(camp){
+      stop.camping.name=camp.tags?.name||'Camping cercano';
+      stop.camping.web=camp.tags?.website||camp.tags?.['contact:website']||'';
+      stop.camping.tel=camp.tags?.phone||camp.tags?.['contact:phone']||'';
     }
 
-    const parkEls=await overpass(`[out:json][timeout:15];(node["amenity"="parking"]${bbox};way["amenity"="parking"]${bbox};);out center;`);
-    const pbest=nearest(parkEls);
-    if(pbest){
-      stop.parking.name=pbest.tags?.name||'Aparcamiento cercano';
-      stop.parking.web=pbest.tags?.website||'';
-      stop.parking.free=pbest.tags?.fee!=='yes';
-      stop.parking.note=pbest.tags?.fee==='yes'?'De pago (según OSM) — verifica en park4night':'Verifica disponibilidad en park4night';
+    const park=nearestOfType(els,t=>t.amenity==='parking');
+    if(park){
+      stop.parking.name=park.tags?.name||'Aparcamiento cercano';
+      stop.parking.web=park.tags?.website||'';
+      stop.parking.free=park.tags?.fee!=='yes';
+      stop.parking.note=park.tags?.fee==='yes'?'De pago (según OSM) — verifica en park4night':'Verifica disponibilidad en park4night';
     }
-  }catch(e){console.log('Auto-fill error:',e.message);}
+  }catch(e){console.log('Auto-fill: Overpass lento/saturado, sin datos esta vez:',e.message);}
 
   return stop;
 }
@@ -1006,21 +1011,28 @@ async function autoFillStop(lat,lng){
 /* Rellena el modal (nombre, campos) progresivamente sin bloquear su apertura */
 async function runAutoFill(lat,lng){
   const status=document.getElementById('autoFillStatus');
+  const myRun=++autoFillToken; // evita que una llamada vieja pise el resultado de otra más nueva
   status.style.display='block';
   status.textContent='🔍 Buscando región, aparcamiento, camping, gasolinera y puntos de interés cercanos…';
-  try{
-    const region=await reverseGeocode(lat,lng);
-    if(region&&!G('mSub'))V('mSub',region);
-  }catch(e){}
-  const d=await autoFillStop(lat,lng);
-  if(d.sights.length&&!G('mSights'))V('mSights',d.sights.join('\n'));
-  if(d.parking.name&&!G('mPkName')){V('mPkName',d.parking.name);V('mPkWeb',d.parking.web);V('mPkNote',d.parking.note);V('mPkFree',String(d.parking.free));}
-  if(d.camping.name&&!G('mCpName')){V('mCpName',d.camping.name);V('mCpWeb',d.camping.web);V('mCpTel',d.camping.tel);}
-  if(d.fuel.note&&!G('mFuelNote'))V('mFuelNote',d.fuel.note);
-  const found=[d.sights.length&&'puntos de interés',d.parking.name&&'aparcamiento',d.camping.name&&'camping',d.fuel.note&&'gasolinera'].filter(Boolean);
-  status.textContent=found.length?('✅ Autocompletado: '+found.join(', ')):'ℹ️ Sin datos automáticos cerca (radio 6 km) — rellena a mano o pulsa "🔄 Autocompletar" tras mover el punto.';
-  setTimeout(()=>{if(status.textContent.startsWith('✅')||status.textContent.startsWith('ℹ️'))status.style.display='none';},5000);
+
+  /* Región y POIs son independientes: se lanzan en paralelo, no en cadena */
+  const [region,d]=await Promise.all([
+    reverseGeocode(lat,lng).catch(()=>null),
+    autoFillStop(lat,lng).catch(()=>({sights:[],parking:{},camping:{},fuel:{}}))
+  ]);
+  if(myRun!==autoFillToken)return; // el usuario ya cerró/cambió el modal, no pisar campos
+
+  if(region&&!G('mSub'))V('mSub',region);
+  if(d.sights?.length&&!G('mSights'))V('mSights',d.sights.join('\n'));
+  if(d.parking?.name&&!G('mPkName')){V('mPkName',d.parking.name);V('mPkWeb',d.parking.web);V('mPkNote',d.parking.note);V('mPkFree',String(d.parking.free));}
+  if(d.camping?.name&&!G('mCpName')){V('mCpName',d.camping.name);V('mCpWeb',d.camping.web);V('mCpTel',d.camping.tel);}
+  if(d.fuel?.note&&!G('mFuelNote'))V('mFuelNote',d.fuel.note);
+
+  const found=[d.sights?.length&&'puntos de interés',d.parking?.name&&'aparcamiento',d.camping?.name&&'camping',d.fuel?.note&&'gasolinera',region&&'región'].filter(Boolean);
+  status.textContent=found.length?('✅ Autocompletado: '+found.join(', ')):'ℹ️ Sin datos cercanos (radio 3 km) o servicio OSM saturado — rellena a mano o pulsa "🔄 Autocompletar".';
+  setTimeout(()=>{status.style.display='none';},5000);
 }
+let autoFillToken=0;
 function clearModalFields(){
   ['mName','mSub','mSights','mPkName','mPkWeb','mPkNote','mCpName','mCpWeb','mCpTel','mCpPrice','mFuelNote'].forEach(x=>V(x,''));
   V('mDay','');V('mNights',0);V('mToll',0);V('mFuel','');V('mType','stop');V('mPkFree','true');
