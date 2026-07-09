@@ -655,9 +655,6 @@ window.panelDragEnd=()=>{
 
 function colorFor(s){return s.type==='ferry'?'#0d6efd':s.optional?'#6b7280':'#c8362f';}
 
-/* Colores para rutas alternativas */
-const routeColors=['#c8362f','#f59e0b','#8b5cf6','#06b6d4'];
-
 /* Enlace de BÚSQUEDA de YouTube por ciudad: nunca se rompe, siempre da vídeos actuales,
    y funciona también para las paradas que añadas tú. Limpia emojis/paréntesis del nombre. */
 function ytLink(name){
@@ -710,13 +707,28 @@ async function drawRoute(){
     let chosenIdx=state.routeChoices[legKey]||0;
     if(chosenIdx>=routes.length)chosenIdx=0;
 
+    /* Estilo tipo Google Maps: SOLO la ruta activa lleva color (rojo, gruesa).
+       Las alternativas van en gris apagado y fino — para que no compitan
+       visualmente ni se confundan con "también marcadas". */
     routes.forEach((route,idx)=>{
       const isChosen=idx===chosenIdx;
-      const color=isChosen?'#c8362f':routeColors[(idx+1)%routeColors.length];
-      const style=isChosen?{color,weight:5,opacity:.9}:{color,weight:3,opacity:.55,dashArray:'6 6'};
+      const style=isChosen
+        ?{color:'#c8362f',weight:5,opacity:.9}
+        :{color:'#8e97a8',weight:3,opacity:.5,dashArray:'5 7'};
       const km=(route.distance/1000).toFixed(0);
-      const label=isChosen?`✓ Ruta en uso · ${km} km`:`Alternativa · ${km} km — toca para usar esta`;
+      const isManualChoice=isChosen&&idx!==0;
+      const label=isManualChoice?`✓ En uso · ${km} km — toca de nuevo para volver a la recomendada`
+        :isChosen?`✓ Ruta recomendada · ${km} km`
+        :`Alternativa · ${km} km — toca para usar esta`;
       const onPick=e=>{
+        if(isManualChoice){
+          // Tocar la ruta YA activa (elegida a mano) la deshace y vuelve a la recomendada (idx 0)
+          selectRouteForLeg(legKey,0);
+          L.popup({closeButton:false,autoClose:true})
+            .setLatLng(e.latlng).setContent('↩️ Vuelta a la ruta recomendada').openOn(map);
+          setTimeout(()=>map.closePopup(),1800);
+          return;
+        }
         selectRouteForLeg(legKey,idx);
         if(!isChosen){
           L.popup({closeButton:false,autoClose:true})
