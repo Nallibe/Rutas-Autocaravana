@@ -94,13 +94,15 @@
   .leaflet-popup-content a{color:var(--acento)}
   .divider{height:1px;background:var(--linea);margin:.7rem 0}
   @media (max-width:820px){
-    main{flex-direction:column;position:relative;overflow:hidden}
+    main{flex-direction:column;position:relative}
     #map{position:absolute;inset:0;height:auto}
-    #panel{position:absolute;left:0;right:0;bottom:0;width:100%;max-width:100%;border-left:none;border-top:none;border-radius:18px 18px 0 0;box-shadow:0 -6px 20px rgba(0,0,0,.18);height:44vh;height:calc(var(--vh,1vh) * 44);max-height:88vh;min-height:160px;z-index:400;transition:height .28s ease}
-    #panel.expanded{height:88vh;height:calc(var(--vh,1vh) * 88)}
-    #panelHandle{display:flex;flex:0 0 auto;align-items:center;justify-content:center;min-height:36px;padding:.4rem 0;cursor:grab;touch-action:none;position:relative;background:#fff;border-radius:18px 18px 0 0}
+    /* position:FIXED (no absolute) y z-index por encima del header (1000):
+       así el panel expandido nunca queda debajo/detrás de la barra superior. */
+    #panel{position:fixed;left:0;right:0;bottom:0;width:100%;max-width:100%;border-left:none;border-top:none;border-radius:18px 18px 0 0;box-shadow:0 -6px 20px rgba(0,0,0,.18);height:42vh;height:calc(var(--vh,1vh) * 42);max-height:78vh;min-height:160px;z-index:1500;transition:height .28s ease}
+    #panel.expanded{height:78vh;height:calc(var(--vh,1vh) * 78)}
+    #panelHandle{display:flex;flex:0 0 auto;align-items:center;justify-content:center;min-height:40px;padding:.4rem 0;cursor:grab;touch-action:none;position:relative;background:#fff;border-radius:18px 18px 0 0}
     #panelHandle .bar{width:40px;height:5px;border-radius:3px;background:var(--linea)}
-    #panelToggle{display:flex;position:absolute;right:.5rem;top:50%;transform:translateY(-50%);background:#fff;border:1px solid var(--linea);border-radius:50%;width:30px;height:30px;align-items:center;justify-content:center;font-size:1rem;cursor:pointer;box-shadow:var(--sombra);z-index:20}
+    #panelToggle{display:flex;position:absolute;right:.5rem;top:50%;transform:translateY(-50%);background:#fff;border:1px solid var(--linea);border-radius:50%;width:34px;height:34px;align-items:center;justify-content:center;font-size:1.1rem;cursor:pointer;box-shadow:var(--sombra);z-index:20}
   }
   /* ===== Portada "Viajes del Sunny" ===== */
   #cover{position:fixed;inset:0;z-index:5000;background:#5b7cf0 url('sunny.png') center bottom/contain no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:6vh 1rem 0;text-align:center;transition:opacity .5s ease}
@@ -710,12 +712,22 @@ async function drawRoute(){
     routes.forEach((route,idx)=>{
       const isChosen=idx===chosenIdx;
       const color=isChosen?'#c8362f':routeColors[(idx+1)%routeColors.length];
-      const style=isChosen?{color,weight:5,opacity:.9}:{color,weight:3,opacity:.5,dashArray:'6 6'};
-      const layer=L.geoJSON(route.geometry,{style}).addTo(map);
+      const style=isChosen?{color,weight:5,opacity:.9}:{color,weight:3,opacity:.55,dashArray:'6 6'};
+      const km=(route.distance/1000).toFixed(0);
+      const label=isChosen?`✓ Ruta en uso · ${km} km`:`Alternativa · ${km} km — toca para usar esta`;
+      const onPick=e=>{
+        selectRouteForLeg(legKey,idx);
+        if(!isChosen){
+          L.popup({closeButton:false,autoClose:true})
+            .setLatLng(e.latlng).setContent(`✓ Ruta cambiada: ${km} km`).openOn(map);
+          setTimeout(()=>map.closePopup(),1800);
+        }
+      };
+      const layer=L.geoJSON(route.geometry,{style}).bindTooltip(label,{sticky:true}).addTo(map);
       // Línea invisible más ancha para facilitar el toque en móvil
-      const hitLine=L.geoJSON(route.geometry,{style:{color:'#000',weight:22,opacity:0}}).addTo(map);
-      hitLine.on('click',()=>selectRouteForLeg(legKey,idx));
-      if(!isChosen)layer.on('click',()=>selectRouteForLeg(legKey,idx));
+      const hitLine=L.geoJSON(route.geometry,{style:{color:'#000',weight:22,opacity:0}}).bindTooltip(label,{sticky:true}).addTo(map);
+      hitLine.on('click',onPick);
+      if(!isChosen)layer.on('click',onPick);
       routeLayers.push(layer,hitLine);
     });
 
@@ -963,45 +975,57 @@ async function reverseGeocode(lat,lng){
    solo "node" (sin "way", ~10x más rápido) y radio reducido a 3 km. */
 async function autoFillStop(lat,lng){
   const stop={sights:[],parking:{name:'',free:true,web:'',note:''},camping:{name:'',web:'',tel:'',price:''},fuel:{price:0,note:''}};
-  const rad=0.03; // ~3 km
+  const rad=0.045; // ~5 km
   const bbox=`(${lat-rad},${lng-rad},${lat+rad},${lng+rad})`;
-  const q=`[out:json][timeout:8];(node["tourism"="attraction"]${bbox};node["tourism"="viewpoint"]${bbox};node["amenity"="fuel"]${bbox};node["tourism"="camp_site"]${bbox};node["tourism"="caravan_site"]${bbox};node["amenity"="parking"]${bbox};);out;`;
+  /* "way" SOLO para parking/camping (suelen mapearse como área, no como punto);
+     para atracción/mirador/gasolinera basta "node" y es ~10x más rápido.
+     Verificado con curl: esta combinación tarda ~2s con radio 5km. */
+  const q=`[out:json][timeout:10];(`
+    +`node["tourism"="attraction"]${bbox};node["tourism"="viewpoint"]${bbox};`
+    +`node["amenity"="fuel"]${bbox};`
+    +`node["tourism"="camp_site"]${bbox};way["tourism"="camp_site"]${bbox};`
+    +`node["tourism"="caravan_site"]${bbox};way["tourism"="caravan_site"]${bbox};`
+    +`node["amenity"="parking"]${bbox};way["amenity"="parking"]${bbox};`
+    +`);out center;`;
 
-  function nearestOfType(elements,pred){
-    let best=null,bd=Infinity;
-    elements.forEach(el=>{
-      if(el.lat==null||!pred(el.tags||{}))return;
-      const d=hav({lat,lng},{lat:el.lat,lng:el.lon});
-      if(d<bd){bd=d;best=el;}
-    });
-    return best;
+  function withDist(elements,pred){
+    return elements
+      .filter(el=>{
+        const elat=el.lat??el.center?.lat;
+        return elat!=null&&pred(el.tags||{});
+      })
+      .map(el=>({el,d:hav({lat,lng},{lat:el.lat??el.center.lat,lng:el.lon??el.center.lng})}))
+      .sort((a,b)=>a.d-b.d);
   }
 
   try{
-    const r=await fetchTimeout('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q),8000);
+    const r=await fetchTimeout('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q),10000);
     const data=await r.json();
     const els=data.elements||[];
 
-    const attraction=nearestOfType(els,t=>t.tourism==='attraction'||t.tourism==='viewpoint');
-    if(attraction)stop.sights.push(attraction.tags?.name||'Punto de interés cercano');
+    /* Varios puntos de interés (el textarea admite uno por línea) */
+    const attractions=withDist(els,t=>t.tourism==='attraction'||t.tourism==='viewpoint');
+    stop.sights=attractions.slice(0,5).map(x=>x.el.tags?.name||(x.el.tags?.tourism==='viewpoint'?'Mirador cercano':'Punto de interés cercano'));
 
-    const fuel=nearestOfType(els,t=>t.amenity==='fuel');
-    if(fuel)stop.fuel.note=fuel.tags?.name||fuel.tags?.brand||'Gasolinera cercana';
+    const fuels=withDist(els,t=>t.amenity==='fuel');
+    if(fuels.length)stop.fuel.note=(fuels[0].el.tags?.name||fuels[0].el.tags?.brand||'Gasolinera cercana')+(fuels.length>1?` (+${Math.min(fuels.length-1,9)}${fuels.length>10?'+':''} más cerca)`:'');
 
     /* OJO: el tag correcto de OSM es tourism=camp_site (con guion bajo), no "campsite" */
-    const camp=nearestOfType(els,t=>t.tourism==='camp_site'||t.tourism==='caravan_site');
-    if(camp){
-      stop.camping.name=camp.tags?.name||'Camping cercano';
-      stop.camping.web=camp.tags?.website||camp.tags?.['contact:website']||'';
-      stop.camping.tel=camp.tags?.phone||camp.tags?.['contact:phone']||'';
+    const camps=withDist(els,t=>t.tourism==='camp_site'||t.tourism==='caravan_site');
+    if(camps.length){
+      const c=camps[0].el;
+      stop.camping.name=(c.tags?.name||'Camping cercano')+(camps.length>1?` (+${Math.min(camps.length-1,9)}${camps.length>10?'+':''} más — revisa park4night)`:'');
+      stop.camping.web=c.tags?.website||c.tags?.['contact:website']||'';
+      stop.camping.tel=c.tags?.phone||c.tags?.['contact:phone']||'';
     }
 
-    const park=nearestOfType(els,t=>t.amenity==='parking');
-    if(park){
-      stop.parking.name=park.tags?.name||'Aparcamiento cercano';
-      stop.parking.web=park.tags?.website||'';
-      stop.parking.free=park.tags?.fee!=='yes';
-      stop.parking.note=park.tags?.fee==='yes'?'De pago (según OSM) — verifica en park4night':'Verifica disponibilidad en park4night';
+    const parks=withDist(els,t=>t.amenity==='parking');
+    if(parks.length){
+      const p=parks[0].el;
+      stop.parking.name=(p.tags?.name||'Aparcamiento cercano')+(parks.length>1?` (+${Math.min(parks.length-1,9)}${parks.length>10?'+':''} más cerca)`:'');
+      stop.parking.web=p.tags?.website||'';
+      stop.parking.free=p.tags?.fee!=='yes';
+      stop.parking.note=p.tags?.fee==='yes'?'De pago (según OSM) — verifica en park4night':'Verifica disponibilidad y estado real en park4night';
     }
   }catch(e){console.log('Auto-fill: Overpass lento/saturado, sin datos esta vez:',e.message);}
 
