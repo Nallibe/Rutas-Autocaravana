@@ -246,7 +246,7 @@
         <p class="muted">Se suma al presupuesto de peajes/costes. Reserva y tarifa real en
           <a href="https://www.grimaldi-lines.com/es/" target="_blank">Grimaldi Lines</a> (descuento autocaravana ≤ 9 m).</p>
         <div class="divider"></div>
-        <p class="muted" style="text-align:center;opacity:.6">Versión: <b id="appVersion">v2026.07.10-2</b> · si algo se ve raro, desliza hacia abajo para recargar la página</p>
+        <p class="muted" style="text-align:center;opacity:.6">Versión: <b id="appVersion">v2026.07.10-3</b> · si algo se ve raro, desliza hacia abajo para recargar la página</p>
       </div>
 
       <!-- CONSEJOS -->
@@ -725,9 +725,16 @@ async function drawRoute(){
       }
       routesByLeg[legKey]=routes;
     }
-    let chosenIdx=state.routeChoices[legKey]||0;
-    if(chosenIdx>=routes.length)chosenIdx=0;
-    legsData.push({legKey,routes,chosenIdx});
+    let chosenIdx=state.routeChoices[legKey];
+    const isManual=chosenIdx!=null&&chosenIdx<routes.length;
+    if(!isManual){
+      /* Sin elección manual del usuario: recomendar la ruta más CORTA en km
+         (no la primera que devuelve OSRM, que a veces prioriza tiempo sobre
+         distancia y puede dar un rodeo raro, ej. Pisa→Roma por el interior
+         en vez de por la costa vía Grosseto/Follonica). */
+      chosenIdx=routes.reduce((best,r,i)=>r.distance<routes[best].distance?i:best,0);
+    }
+    legsData.push({legKey,routes,chosenIdx,isManual});
   }
 
   if(myToken!==drawRouteToken)return; // comprobación final antes de dibujar
@@ -738,7 +745,10 @@ async function drawRoute(){
   routeLayers=[];
   let totalKm=0;
 
-  legsData.forEach(({legKey,routes,chosenIdx})=>{
+  legsData.forEach(({legKey,routes,chosenIdx,isManual})=>{
+    /* Recalcular cuál sería la recomendada (más corta) para poder distinguir
+       "elegida a mano" de "recomendada automáticamente", sea cual sea su idx. */
+    const recommendedIdx=routes.reduce((best,r,i)=>r.distance<routes[best].distance?i:best,0);
     /* Estilo tipo Google Maps: SOLO la ruta activa lleva color (rojo, gruesa).
        Las alternativas van en gris apagado y fino — para que no compitan
        visualmente ni se confundan con "también marcadas". */
@@ -748,14 +758,14 @@ async function drawRoute(){
         ?{color:'#c8362f',weight:5,opacity:.9}
         :{color:'#8e97a8',weight:3,opacity:.5,dashArray:'5 7'};
       const km=(route.distance/1000).toFixed(0);
-      const isManualChoice=isChosen&&idx!==0;
+      const isManualChoice=isChosen&&isManual&&idx!==recommendedIdx;
       const label=isManualChoice?`✓ En uso · ${km} km — toca de nuevo para volver a la recomendada`
-        :isChosen?`✓ Ruta recomendada · ${km} km`
+        :isChosen?`✓ Ruta recomendada (menos km) · ${km} km`
         :`Alternativa · ${km} km — toca para usar esta`;
       const onPick=e=>{
         L.DomEvent.stop(e); // evita que el mismo toque dispare otro handler debajo
         if(isManualChoice){
-          selectRouteForLeg(legKey,0);
+          selectRouteForLeg(legKey,recommendedIdx);
           L.popup({closeButton:false,autoClose:true})
             .setLatLng(e.latlng).setContent('↩️ Vuelta a la ruta recomendada').openOn(map);
           setTimeout(()=>map.closePopup(),1800);
