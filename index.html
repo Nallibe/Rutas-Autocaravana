@@ -564,7 +564,7 @@ function renderWeatherAlerts(list){
 /* Cambiar de viaje activo */
 function setActive(id){
   if(!app.trips[id])return;
-  app.activeId=id;state=app.trips[id];lastKm=null;save();
+  app.activeId=id;state=app.trips[id];lastKm=null;routesByLeg={};save();
   refresh();bindCfg();renderTripSelector();
   setTimeout(()=>{fitRoute();findWeather().catch(e=>console.log('Weather',e));},300);
 }
@@ -686,27 +686,53 @@ function visibleStops(){return state.stops.filter(s=>state.showOpt||!s.optional)
    Las opcionales se muestran (si el toggle lo permite) unidas por líneas grises que NO cuentan km/coste. */
 function coreStops(){return state.stops.filter(s=>!s.optional&&!/Ferry/.test(s.name));}
 
+/* Token anti-carrera: si se llama drawRoute() otra vez mientras la anterior
+   sigue esperando a la red, la ejecución vieja debe abortar SIN tocar el
+   mapa — si no, dos ejecuciones solapadas pueden dejar capas "huérfanas"
+   (nunca limpiadas) y eso es justo lo que se veía como "dos rutas
+   seleccionadas a la vez" con los km duplicados. */
+let drawRouteToken=0;
+
 async function drawRoute(){
-  routeLayers.forEach(l=>map.removeLayer(l));
-  routeLayers=[];routesByLeg={};
+  const myToken=++drawRouteToken;
 
   const core=coreStops();
-  if(core.length<2){updateSummary(0);return;}
+  if(core.length<2){
+    routeLayers.forEach(l=>map.removeLayer(l));routeLayers=[];
+    updateSummary(0);
+    return;
+  }
 
-  let totalKm=0;
   state.routeChoices=state.routeChoices||{};
+  const legsData=[];
 
+  // FASE 1: obtener datos (puede tardar por red). NO se toca el mapa aquí.
   for(let i=0;i<core.length-1;i++){
     const s1=core[i],s2=core[i+1];
     const legKey=s1.id+'-'+s2.id;
-    let routes=await fetchRouteAlternatives(s1,s2);
-    if(!routes.length){
-      routes=[{geometry:{type:'LineString',coordinates:[[s1.lng,s1.lat],[s2.lng,s2.lat]]},distance:hav(s1,s2)*1000,duration:0}];
+    let routes=routesByLeg[legKey]; // reutilizar si ya se obtuvo antes (evita refetch + acorta la ventana de carrera)
+    if(!routes){
+      routes=await fetchRouteAlternatives(s1,s2);
+      if(myToken!==drawRouteToken)return; // una llamada más nueva ya se está ejecutando: abortar
+      if(!routes.length){
+        routes=[{geometry:{type:'LineString',coordinates:[[s1.lng,s1.lat],[s2.lng,s2.lat]]},distance:hav(s1,s2)*1000,duration:0}];
+      }
+      routesByLeg[legKey]=routes;
     }
-    routesByLeg[legKey]=routes;
     let chosenIdx=state.routeChoices[legKey]||0;
     if(chosenIdx>=routes.length)chosenIdx=0;
+    legsData.push({legKey,routes,chosenIdx});
+  }
 
+  if(myToken!==drawRouteToken)return; // comprobación final antes de dibujar
+
+  // FASE 2: dibujar — de una sola vez, de forma síncrona (sin await de por
+  // medio), así ninguna otra llamada puede colarse a mitad de este bloque.
+  routeLayers.forEach(l=>map.removeLayer(l));
+  routeLayers=[];
+  let totalKm=0;
+
+  legsData.forEach(({legKey,routes,chosenIdx})=>{
     /* Estilo tipo Google Maps: SOLO la ruta activa lleva color (rojo, gruesa).
        Las alternativas van en gris apagado y fino — para que no compitan
        visualmente ni se confundan con "también marcadas". */
@@ -721,8 +747,8 @@ async function drawRoute(){
         :isChosen?`✓ Ruta recomendada · ${km} km`
         :`Alternativa · ${km} km — toca para usar esta`;
       const onPick=e=>{
+        L.DomEvent.stop(e); // evita que el mismo toque dispare otro handler debajo
         if(isManualChoice){
-          // Tocar la ruta YA activa (elegida a mano) la deshace y vuelve a la recomendada (idx 0)
           selectRouteForLeg(legKey,0);
           L.popup({closeButton:false,autoClose:true})
             .setLatLng(e.latlng).setContent('↩️ Vuelta a la ruta recomendada').openOn(map);
@@ -743,9 +769,8 @@ async function drawRoute(){
       if(!isChosen)layer.on('click',onPick);
       routeLayers.push(layer,hitLine);
     });
-
     totalKm+=routes[chosenIdx].distance/1000;
-  }
+  });
 
   // Conectores GRISES para paradas opcionales (solo visual, no cuentan km/coste)
   if(state.showOpt){
