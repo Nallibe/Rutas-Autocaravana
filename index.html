@@ -888,7 +888,7 @@ function vanIcon(heading){
 /* GPS en vivo dentro del mapa: la autocaravana te sigue en tiempo real,
    y recalcula la ruta (como Google Maps) si te desvías más de ~400 m del trazado. */
 let gpsWatch=null,gpsMarker=null,gpsCircle=null,gpsFollow=false;
-let liveRerouteLayer=null,lastRerouteTime=0;
+let liveRerouteLayer=null,lastRerouteTime=0,gpsRerouteToken=0,offRouteStreak=0;
 
 function nearestCoreIdxToPoint(pt){
   const core=coreStops();
@@ -896,12 +896,24 @@ function nearestCoreIdxToPoint(pt){
   core.forEach((s,i)=>{const d=hav(pt,s);if(d<bd){bd=d;best=i;}});
   return{core,idx:best};
 }
+
+function clearLiveReroute(){
+  if(liveRerouteLayer){map.removeLayer(liveRerouteLayer);liveRerouteLayer=null;}
+  offRouteStreak=0;
+}
+
+/* MISMO patrón anti-carrera que drawRoute(): sin token, dos lecturas de GPS
+   casi seguidas podían disparar dos fetches solapados y dejar una ruta
+   "huérfana" sin borrar — eso es lo que se veía como líneas azules
+   duplicadas/en zigzag que no se podían quitar. Además ahora exige VARIAS
+   lecturas seguidas fuera de ruta (no una sola, que puede ser solo ruido
+   de GPS) antes de recalcular, y el trazado se puede tocar para descartarlo. */
 async function checkGpsDeviation(pos){
   const{core,idx}=nearestCoreIdxToPoint(pos);
   if(idx>=core.length-1)return;
   const target=core[idx+1];
   if(hav(pos,target)<0.3){ // <300 m: llegando, sin recalcular
-    if(liveRerouteLayer){map.removeLayer(liveRerouteLayer);liveRerouteLayer=null;}
+    clearLiveReroute();
     return;
   }
   const legKey=core[idx].id+'-'+target.id;
@@ -914,18 +926,28 @@ async function checkGpsDeviation(pos){
     coords.forEach(c=>{const d=hav(pos,{lat:c[1],lng:c[0]});if(d<minD)minD=d;});
     onRoute=minD<0.4; // dentro de 400 m de la línea trazada
   }
+  if(onRoute){offRouteStreak=0;return;}
+
+  offRouteStreak++;
   const now=Date.now();
-  if(!onRoute&&now-lastRerouteTime>20000){
-    lastRerouteTime=now;
-    try{
-      const url=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.lng},${target.lat}?overview=full&geometries=geojson`;
-      const r=await fetch(url);const j=await r.json();
-      if(j.routes&&j.routes[0]){
-        if(liveRerouteLayer)map.removeLayer(liveRerouteLayer);
-        liveRerouteLayer=L.geoJSON(j.routes[0].geometry,{style:{color:'#8b5cf6',weight:5,opacity:.9,dashArray:'1 10'}}).addTo(map);
-      }
-    }catch(e){}
-  }
+  // 3 lecturas seguidas fuera de ruta (evita recalcular por un solo salto/ruido de GPS) + enfriamiento 30s
+  if(offRouteStreak<3||now-lastRerouteTime<30000)return;
+  lastRerouteTime=now;
+
+  const myToken=++gpsRerouteToken;
+  try{
+    const url=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.lng},${target.lat}?overview=full&geometries=geojson`;
+    const r=await fetchTimeout(url,8000);
+    const j=await r.json();
+    if(myToken!==gpsRerouteToken)return; // una lectura más nueva ya tomó el relevo: no dibujar esto
+    if(j.routes&&j.routes[0]){
+      if(liveRerouteLayer)map.removeLayer(liveRerouteLayer);
+      liveRerouteLayer=L.geoJSON(j.routes[0].geometry,{style:{color:'#8b5cf6',weight:5,opacity:.9,dashArray:'1 10'}})
+        .bindTooltip('🔄 Ruta recalculada por GPS — toca para descartar',{sticky:true})
+        .on('click',clearLiveReroute)
+        .addTo(map);
+    }
+  }catch(e){}
 }
 
 window.toggleGPS=()=>{
@@ -934,7 +956,7 @@ window.toggleGPS=()=>{
     navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;gpsFollow=false;
     if(gpsMarker){map.removeLayer(gpsMarker);gpsMarker=null;}
     if(gpsCircle){map.removeLayer(gpsCircle);gpsCircle=null;}
-    if(liveRerouteLayer){map.removeLayer(liveRerouteLayer);liveRerouteLayer=null;}
+    clearLiveReroute();
     btn.classList.remove('g');btn.textContent='📍 GPS';return;
   }
   if(!navigator.geolocation){alert('Tu navegador no soporta geolocalización.');return;}
