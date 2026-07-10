@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- Evita que Safari/iOS (y otros) sirvan una versión en caché tras cada actualización -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>RoadTrip Italia · Autocaravana 7,5m · Zaragoza ⇄ Italia</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
@@ -241,6 +245,8 @@
         <div class="field"><label>Coste ferry Civitavecchia→Barcelona (€, ida camper + camarote)</label><input type="number" id="cFerry" value="520" step="10"></div>
         <p class="muted">Se suma al presupuesto de peajes/costes. Reserva y tarifa real en
           <a href="https://www.grimaldi-lines.com/es/" target="_blank">Grimaldi Lines</a> (descuento autocaravana ≤ 9 m).</p>
+        <div class="divider"></div>
+        <p class="muted" style="text-align:center;opacity:.6">Versión: <b id="appVersion">v2026.07.10-1</b> · si algo se ve raro, desliza hacia abajo para recargar la página</p>
       </div>
 
       <!-- CONSEJOS -->
