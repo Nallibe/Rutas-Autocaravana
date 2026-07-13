@@ -82,6 +82,14 @@
   .legend{display:flex;flex-wrap:wrap;gap:.5rem;margin:.3rem 0 .6rem}
   .legend span{display:flex;align-items:center;gap:.3rem;font-size:.72rem;color:var(--gris)}
   .dot{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15)}
+  /* Pines del mapa con volumen (degradado + sombra + brillo superior) y una
+     pequeña animación de "caída" al aparecer, para que no se vean planos. */
+  .map-pin-wrap{background:transparent!important;border:none!important}
+  .map-pin{width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2.5px solid #fff;
+    box-shadow:0 3px 8px rgba(0,0,0,.38),inset 0 1px 2px rgba(255,255,255,.55),inset 0 -2px 3px rgba(0,0,0,.15);
+    display:flex;align-items:center;justify-content:center;animation:pinDrop .5s cubic-bezier(.34,1.56,.64,1)}
+  .map-pin span{transform:rotate(45deg);color:#fff;font-weight:800;font-size:11px;text-shadow:0 1px 2px rgba(0,0,0,.35)}
+  @keyframes pinDrop{0%{transform:rotate(-45deg) translateY(-22px);opacity:0}65%{transform:rotate(-45deg) translateY(3px);opacity:1}100%{transform:rotate(-45deg) translateY(0)}}
   .alert{background:linear-gradient(135deg,#fdeaea,#fff5f5);border:2px solid #c8362f;border-radius:12px;padding:.7rem;margin-bottom:.6rem;color:#8b1c1c}
   .alert b{color:#c8362f;display:block;margin-bottom:.2rem}
   .alert.warn{background:linear-gradient(135deg,#fff8e6,#fffbf0);border-color:#b8860b}
@@ -259,7 +267,7 @@
         <p class="muted">Se suma al presupuesto de peajes/costes. Reserva y tarifa real en
           <a href="https://www.grimaldi-lines.com/es/" target="_blank">Grimaldi Lines</a> (descuento autocaravana ≤ 9 m).</p>
         <div class="divider"></div>
-        <p class="muted" style="text-align:center;opacity:.6">Versión: <b id="appVersion">v2026.07.13-3</b> · si algo se ve raro, desliza hacia abajo para recargar la página</p>
+        <p class="muted" style="text-align:center;opacity:.6">Versión: <b id="appVersion">v2026.07.13-4</b> · si algo se ve raro, desliza hacia abajo para recargar la página</p>
       </div>
 
       <!-- CONSEJOS -->
@@ -626,8 +634,12 @@ function delTrip(){
 
 /* ============================ MAPA ============================ */
 const map=L.map('map',{zoomControl:true}).setView([44,8],5);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  maxZoom:19, attribution:'© OpenStreetMap'
+/* Mapa base "Voyager" (CartoDB) en vez del OSM plano de siempre: mismo
+   dato (OpenStreetMap) pero con relieve sombreado, agua y vegetación con
+   más color y etiquetas más limpias — se ve mucho más "app moderna". */
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:20, subdomains:'abcd',
+  attribution:'© OpenStreetMap · © CARTO'
 }).addTo(map);
 
 let markers=[], routeLayer=null, routeLayers=[], activeRouteLeg=null;
@@ -686,9 +698,16 @@ function ytLink(name){
   const clean=(name||'').replace(/[^\p{L}\p{N}\s]/gu,' ').replace(/\s+/g,' ').trim();
   return 'https://www.youtube.com/results?search_query='+encodeURIComponent('qué ver en '+clean+' viaje');
 }
+/* Degradado a juego con colorFor(), para que el pin tenga un aspecto
+   "glossy"/con volumen en vez de un color plano. */
+function gradientFor(s){
+  if(s.type==='ferry')return'linear-gradient(135deg,#5aa8ff,#0d6efd 55%,#0a4fb0)';
+  if(s.optional)return'linear-gradient(135deg,#a7afba,#6b7280 55%,#454c58)';
+  return'linear-gradient(135deg,#e8564f,#c8362f 55%,#8f2019)';
+}
 function icon(s,idx){
-  const c=colorFor(s);
-  return L.divIcon({className:'',html:`<div style="background:${c};color:#fff;width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800"><span style="transform:rotate(45deg)">${idx}</span></div>`,iconSize:[26,26],iconAnchor:[13,26],popupAnchor:[0,-24]});
+  const grad=gradientFor(s);
+  return L.divIcon({className:'map-pin-wrap',html:`<div class="map-pin" style="background:${grad}"><span>${idx}</span></div>`,iconSize:[28,28],iconAnchor:[14,28],popupAnchor:[0,-26]});
 }
 function popupHtml(s){
   let h=`<h3>${s.name}</h3><div style="color:#6b7280;font-size:.78rem;margin-bottom:.3rem">${s.sub||''} · ${s.day}</div>`;
