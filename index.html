@@ -246,7 +246,7 @@
         <p class="muted">Se suma al presupuesto de peajes/costes. Reserva y tarifa real en
           <a href="https://www.grimaldi-lines.com/es/" target="_blank">Grimaldi Lines</a> (descuento autocaravana ≤ 9 m).</p>
         <div class="divider"></div>
-        <p class="muted" style="text-align:center;opacity:.6">Versión: <b id="appVersion">v2026.07.10-3</b> · si algo se ve raro, desliza hacia abajo para recargar la página</p>
+        <p class="muted" style="text-align:center;opacity:.6">Versión: <b id="appVersion">v2026.07.13-1</b> · si algo se ve raro, desliza hacia abajo para recargar la página</p>
       </div>
 
       <!-- CONSEJOS -->
@@ -715,6 +715,15 @@ async function drawRoute(){
   // FASE 1: obtener datos (puede tardar por red). NO se toca el mapa aquí.
   for(let i=0;i<core.length-1;i++){
     const s1=core[i],s2=core[i+1];
+    /* Si el tramo SALE de una parada de tipo "ferry" (ej. Civitavecchia,
+       el puerto de embarque) hacia la siguiente parada core, NO hay
+       carretera real entre medio — se cruza en barco. OJO: esto NO debe
+       saltar el tramo que LLEGA a la parada ferry (ej. Sorrento→
+       Civitavecchia sí se conduce de verdad, por eso solo se mira s1,
+       no s2). Sin este control, OSRM calculaba una "ruta por carretera"
+       ficticia de ~1.550 km rodeando media Europa (Civitavecchia→
+       Barcelona) y la sumaba al total, duplicando de facto los km reales. */
+    if(s1.type==='ferry')continue;
     const legKey=s1.id+'-'+s2.id;
     let routes=routesByLeg[legKey]; // reutilizar si ya se obtuvo antes (evita refetch + acorta la ventana de carrera)
     if(!routes){
