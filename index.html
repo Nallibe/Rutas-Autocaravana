@@ -259,7 +259,7 @@
         <p class="muted">Se suma al presupuesto de peajes/costes. Reserva y tarifa real en
           <a href="https://www.grimaldi-lines.com/es/" target="_blank">Grimaldi Lines</a> (descuento autocaravana ≤ 9 m).</p>
         <div class="divider"></div>
-        <p class="muted" style="text-align:center;opacity:.6">Versión: <b id="appVersion">v2026.07.13-2</b> · si algo se ve raro, desliza hacia abajo para recargar la página</p>
+        <p class="muted" style="text-align:center;opacity:.6">Versión: <b id="appVersion">v2026.07.13-3</b> · si algo se ve raro, desliza hacia abajo para recargar la página</p>
       </div>
 
       <!-- CONSEJOS -->
@@ -816,16 +816,13 @@ async function drawRoute(){
     totalKm+=routes[chosenIdx].distance/1000;
   });
 
-  // Conectores GRISES para paradas opcionales (solo visual, no cuentan km/coste)
-  if(state.showOpt){
-    const all=state.stops;
-    all.forEach((s,i)=>{
-      if(!s.optional||/Ferry/.test(s.name))return;
-      const prev=all[i-1],next=all[i+1];
-      if(prev)routeLayers.push(L.polyline([[prev.lat,prev.lng],[s.lat,s.lng]],{color:'#9ca3af',weight:3,opacity:.65,dashArray:'3 7'}).addTo(map));
-      if(next)routeLayers.push(L.polyline([[s.lat,s.lng],[next.lat,next.lng]],{color:'#9ca3af',weight:3,opacity:.65,dashArray:'3 7'}).addTo(map));
-    });
-  }
+  /* Las paradas opcionales NO llevan línea conectora al resto de la ruta.
+     Antes se dibujaba una línea recta hasta la parada anterior/siguiente
+     de la lista completa, pero cuando esa vecina estaba lejos (ej. Cinque
+     Terre → Roma, ~280 km en línea recta) la línea corría casi paralela a
+     la ruta real por carretera y parecía una segunda ruta duplicada. Con
+     el marcador gris (ver colorFor) ya queda claro que es opcional y no
+     forma parte del trayecto conducido. */
 
   // Ferry (línea azul discontinua) sobre la secuencia visible completa
   const ferryLeg=visibleStops();
